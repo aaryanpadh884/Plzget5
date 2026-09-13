@@ -304,6 +304,62 @@ LEAKY_COLUMNS = [
 ]
 
 
+
+
+# --------------------------------------------------------------------------
+# Inference-time features
+# --------------------------------------------------------------------------
+def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
+                             schedules: pd.DataFrame) -> pd.DataFrame:
+    """Features for games that have not been played yet.
+
+    Training and serving must not drift apart, so this reuses the exact
+    aggregation and lag functions the training path uses. The trick is to
+    append a placeholder game-log row for each upcoming team-game with zeroed
+    stats, then run the normal pipeline: because :func:`_lagged` shifts within
+    the group *before* rolling, a placeholder's own zeros can never enter its
+    own features, and it picks up precisely the trailing window that a real row
+    in that slot would have.
+
+    ``pbp`` is truncated to strictly before the target week first, so replaying
+    a past week produces the same numbers that would have been available on the
+    morning of that game.
+    """
+    season = int(targets["season"].iloc[0])
+    week = int(targets["week"].iloc[0])
+    history = pbp[(pbp["season"] < season)
+                  | ((pbp["season"] == season) & (pbp["week"] < week))]
+
+    plog = player_game_logs(history)
+    tlog = team_offense_logs(history)
+    dlog = team_defense_logs(history)
+
+    def _placeholders(template: pd.DataFrame, keys: pd.DataFrame) -> pd.DataFrame:
+        rows = keys.copy()
+        for col in template.columns:
+            if col not in rows.columns:
+                rows[col] = 0 if template[col].dtype.kind in "biufc" else None
+        return pd.concat([template, rows[template.columns]], ignore_index=True)
+
+    p_keys = (targets[["game_id", "season", "week", "team", "starter_id"]]
+              .rename(columns={"starter_id": "player_id"}))
+    t_keys = targets[["game_id", "season", "week", "team"]]
+    d_keys = (targets[["game_id", "season", "week", "opponent"]]
+              .rename(columns={"opponent": "team"}))
+
+    pf = build_player_features(_placeholders(plog, p_keys))
+    tf = build_team_features(_placeholders(tlog, t_keys))
+    df_ = build_defense_features(_placeholders(dlog, d_keys))
+
+    out = targets.merge(pf, left_on=["game_id", "team", "starter_id"],
+                        right_on=["game_id", "team", "player_id"], how="left")
+    out = out.drop(columns=["player_id"])
+    out = out.merge(tf, on=["game_id", "team"], how="left")
+    out = out.merge(df_, on=["game_id", "opponent"], how="left")
+    return add_context_features(out, schedules)
+
+
+
 def main(refresh: bool = False) -> pd.DataFrame:
     import ingest
 
