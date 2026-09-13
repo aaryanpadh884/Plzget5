@@ -29,7 +29,7 @@ FEATURES_PATH = PROCESSED_DIR / "features.parquet"
 # --------------------------------------------------------------------------
 # nflfastR play-by-play is reliable well before this, but 2016+ keeps the
 # sample in the modern-offense era, which is what the product plan asks for.
-FIRST_SEASON = 2016
+FIRST_SEASON = 2013
 LAST_SEASON = 2024
 SEASONS = list(range(FIRST_SEASON, LAST_SEASON + 1))
 

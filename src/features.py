@@ -76,6 +76,10 @@ def player_game_logs(pbp: pd.DataFrame) -> pd.DataFrame:
     runs["stuffed"] = (runs["rushing_yards"] <= 0).astype(int)
     runs["explosive"] = (runs["rushing_yards"] >= 10).astype(int)
 
+    team_tot = (runs.groupby(["game_id", "team"], as_index=False)
+                    .agg(team_carries=("rush_attempt", "sum"),
+                         team_fd_carries=("fd_carry", "sum")))
+
     logs = (runs.groupby(["game_id", "season", "week", "team",
                           "rusher_player_id"], as_index=False)
                 .agg(carries=("rush_attempt", "sum"),
@@ -87,6 +91,7 @@ def player_game_logs(pbp: pd.DataFrame) -> pd.DataFrame:
                      stuffs=("stuffed", "sum"),
                      explosives=("explosive", "sum"))
                 .rename(columns={"rusher_player_id": "player_id"}))
+    logs = logs.merge(team_tot, on=["game_id", "team"], how="left")
     logs["games"] = 1
     # Did this player clear the threshold on the opening drive in this game?
     logs["fd_hit"] = (logs["fd_yards"] >= 5).astype(int)
@@ -94,6 +99,26 @@ def player_game_logs(pbp: pd.DataFrame) -> pd.DataFrame:
     # "first-drive rush share" the product plan asks for.
     logs["fd_played"] = (logs["fd_carries"] > 0).astype(int)
     return logs
+
+
+def player_snap_logs(snaps: pd.DataFrame, rosters: pd.DataFrame) -> pd.DataFrame:
+    """Per player-game offensive snap share, keyed to gsis_id.
+
+    Snap share is a cleaner read on a back's role than carries are: it counts
+    the passing downs he stayed on the field for, which is exactly what
+    separates a bell-cow from a early-down-only back who cedes the opener.
+    """
+    from label import rb_player_weeks, rb_snap_shares
+
+    rb = rb_player_weeks(rosters)
+    share = rb_snap_shares(snaps, rb)
+    meta = (snaps[["game_id", "season", "week"]]
+            .drop_duplicates(subset=["game_id"]))
+    out = share.merge(meta, on="game_id", how="left")
+    out = out.rename(columns={"gsis_id": "player_id"})
+    out["offense_pct"] = pd.to_numeric(out["offense_pct"], errors="coerce")
+    out["games"] = 1
+    return out.dropna(subset=["season", "week"])
 
 
 def team_offense_logs(pbp: pd.DataFrame) -> pd.DataFrame:
@@ -110,6 +135,11 @@ def team_offense_logs(pbp: pd.DataFrame) -> pd.DataFrame:
     plays["is_run"] = (plays["play_type"] == "run").astype(int)
     plays["rush_yds"] = plays["rushing_yards"].fillna(0) * plays["is_run"]
     plays["rush_epa_sum"] = plays["epa"].fillna(0) * plays["is_run"]
+    # Neutral game script: close game, before garbage time. Blowouts distort
+    # run rate in a way that says nothing about a coach's opener tendency.
+    neutral = (plays["wp"].between(0.2, 0.8)) & (plays["qtr"] <= 3)
+    plays["neutral_plays"] = neutral.astype(int)
+    plays["neutral_runs"] = (neutral & (plays["play_type"] == "run")).astype(int)
     plays["fd_plays"] = on_first.astype(int)
     plays["fd_runs"] = (on_first & (plays["play_type"] == "run")).astype(int)
     plays["fd_rush_yds"] = plays["rush_yds"] * on_first.astype(int)
@@ -121,7 +151,9 @@ def team_offense_logs(pbp: pd.DataFrame) -> pd.DataFrame:
                       off_rush_epa=("rush_epa_sum", "sum"),
                       off_fd_plays=("fd_plays", "sum"),
                       off_fd_runs=("fd_runs", "sum"),
-                      off_fd_rush_yards=("fd_rush_yds", "sum")))
+                      off_fd_rush_yards=("fd_rush_yds", "sum"),
+                      off_neutral_plays=("neutral_plays", "sum"),
+                      off_neutral_runs=("neutral_runs", "sum")))
     logs["games"] = 1
     return logs
 
@@ -150,7 +182,8 @@ W = TRAILING_WINDOW
 
 def build_player_features(logs: pd.DataFrame) -> pd.DataFrame:
     cols = ["carries", "rush_yards", "rush_epa", "fd_carries", "fd_yards",
-            "rz_carries", "stuffs", "explosives", "games", "fd_hit", "fd_played"]
+            "rz_carries", "stuffs", "explosives", "games", "fd_hit", "fd_played",
+            "team_carries", "team_fd_carries"]
     out = _lagged(logs, ["player_id"], cols, W, f"t{W}")
     out = _expanding(out, ["player_id", "season"], cols, "std")
 
@@ -170,6 +203,12 @@ def build_player_features(logs: pd.DataFrame) -> pd.DataFrame:
     out["rb_fd_participation_season"] = _safe_div(out["fd_played_std"],
                                                   out["games_std"])
     out[f"rb_fd_hit_rate_{t}"] = _safe_div(out[f"fd_hit_{t}"], out[f"games_{t}"])
+    # Backfield concentration. A back taking 80% of his team's carries is a
+    # different proposition from one splitting them, even at equal volume.
+    out[f"rb_carry_share_{t}"] = _safe_div(out[f"carries_{t}"],
+                                           out[f"team_carries_{t}"])
+    out[f"rb_fd_carry_share_{t}"] = _safe_div(out[f"fd_carries_{t}"],
+                                              out[f"team_fd_carries_{t}"])
     out[f"rb_rz_share_{t}"] = _safe_div(out[f"rz_carries_{t}"], out[f"carries_{t}"])
     out[f"rb_stuff_rate_{t}"] = _safe_div(out[f"stuffs_{t}"], out[f"carries_{t}"])
     out[f"rb_explosive_rate_{t}"] = _safe_div(out[f"explosives_{t}"],
@@ -182,9 +221,18 @@ def build_player_features(logs: pd.DataFrame) -> pd.DataFrame:
     return out[keep]
 
 
+def build_snap_features(logs: pd.DataFrame) -> pd.DataFrame:
+    out = _lagged(logs, ["player_id"], ["offense_pct", "games"], W, f"t{W}")
+    t = f"t{W}"
+    out[f"rb_snap_share_{t}"] = _safe_div(out[f"offense_pct_{t}"],
+                                          out[f"games_{t}"])
+    return out[["game_id", "team", "player_id", f"rb_snap_share_{t}"]]
+
+
 def build_team_features(logs: pd.DataFrame) -> pd.DataFrame:
     cols = ["off_plays", "off_rushes", "off_rush_yards", "off_rush_epa",
-            "off_fd_plays", "off_fd_runs", "off_fd_rush_yards", "games"]
+            "off_fd_plays", "off_fd_runs", "off_fd_rush_yards", "games",
+            "off_neutral_plays", "off_neutral_runs"]
     out = _lagged(logs, ["team"], cols, W, f"t{W}")
     out = _expanding(out, ["team", "season"], cols, "std")
 
@@ -198,6 +246,8 @@ def build_team_features(logs: pd.DataFrame) -> pd.DataFrame:
     # lately versus his season baseline.
     out[f"tm_fd_run_rate_trend_{t}"] = (out[f"tm_fd_run_rate_{t}"]
                                         - out["tm_fd_run_rate_season"])
+    out[f"tm_neutral_run_rate_{t}"] = _safe_div(out[f"off_neutral_runs_{t}"],
+                                                out[f"off_neutral_plays_{t}"])
     out[f"tm_rush_epa_per_play_{t}"] = _safe_div(out[f"off_rush_epa_{t}"],
                                                  out[f"off_rushes_{t}"])
     out[f"tm_ypc_{t}"] = _safe_div(out[f"off_rush_yards_{t}"], out[f"off_rushes_{t}"])
@@ -225,6 +275,34 @@ def build_defense_features(logs: pd.DataFrame) -> pd.DataFrame:
 
     keep = ["game_id", "team"] + [c for c in out.columns if c.startswith("opp_")]
     return out[keep].rename(columns={"team": "opponent"})
+
+
+def depth_rank_features(depth_charts: pd.DataFrame) -> pd.DataFrame:
+    """Published depth-chart standing for each RB in each week.
+
+    Unlike the rolling features this is a current-week value, not a lagged one,
+    and that is legitimate: depth charts are published before kickoff. It is
+    the same signal inference leans on to pick a starter, so giving the model
+    access to it in training keeps the two paths honest with each other.
+    """
+    from label import standardize_team
+
+    dc = depth_charts[(depth_charts["position"] == "RB")
+                      & (depth_charts["formation"] == "Offense")].copy()
+    dc["team"] = standardize_team(dc["club_code"])
+    dc["depth"] = pd.to_numeric(dc["depth_team"], errors="coerce")
+    dc["week"] = pd.to_numeric(dc["week"], errors="coerce")
+    dc = dc.dropna(subset=["gsis_id", "depth", "week"])
+
+    # How many backs the team lists as RB1: 2+ is a declared committee.
+    n_top = (dc[dc["depth"] == 1]
+             .groupby(["season", "week", "team"], as_index=False)["gsis_id"]
+             .nunique().rename(columns={"gsis_id": "rb_n_listed_first"}))
+
+    out = (dc.groupby(["season", "week", "team", "gsis_id"], as_index=False)["depth"]
+             .min().rename(columns={"depth": "rb_depth_rank",
+                                    "gsis_id": "player_id"}))
+    return out.merge(n_top, on=["season", "week", "team"], how="left")
 
 
 def add_context_features(df: pd.DataFrame, schedules: pd.DataFrame) -> pd.DataFrame:
@@ -256,17 +334,28 @@ HEURISTIC_COL = f"rb_fd_yards_per_game_t{W}"
 
 
 def build_features(labeled: pd.DataFrame, pbp: pd.DataFrame,
-                   schedules: pd.DataFrame) -> pd.DataFrame:
+                   schedules: pd.DataFrame, snaps: pd.DataFrame,
+                   rosters: pd.DataFrame,
+                   depth_charts: pd.DataFrame) -> pd.DataFrame:
     plog = player_game_logs(pbp)
     tlog = team_offense_logs(pbp)
     dlog = team_defense_logs(pbp)
+    slog = player_snap_logs(snaps, rosters)
 
     pf = build_player_features(plog)
     tf = build_team_features(tlog)
     df_ = build_defense_features(dlog)
+    sf = build_snap_features(slog)
+    dr = depth_rank_features(depth_charts)
 
     out = labeled.merge(pf, left_on=["game_id", "team", "starter_id"],
                         right_on=["game_id", "team", "player_id"], how="left")
+    out = out.drop(columns=["player_id"])
+    out = out.merge(sf, left_on=["game_id", "team", "starter_id"],
+                    right_on=["game_id", "team", "player_id"], how="left")
+    out = out.drop(columns=["player_id"])
+    out = out.merge(dr, left_on=["season", "week", "team", "starter_id"],
+                    right_on=["season", "week", "team", "player_id"], how="left")
     out = out.drop(columns=["player_id"])
     out = out.merge(tf, on=["game_id", "team"], how="left")
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
@@ -280,6 +369,8 @@ FEATURE_COLUMNS = None  # resolved at runtime by feature_columns()
 def feature_columns(df: pd.DataFrame) -> list[str]:
     """Model inputs: the engineered pregame columns, nothing derived from the
     game being predicted."""
+    # The rb_/tm_/opp_ prefixes already cover the depth-chart columns, which
+    # are pregame-legal despite not being lagged (see depth_rank_features).
     prefixes = ("rb_", "tm_", "opp_")
     engineered = [c for c in df.columns if c.startswith(prefixes)]
     context = ["team_spread", "total_line", "implied_team_total", "is_home",
@@ -310,7 +401,9 @@ LEAKY_COLUMNS = [
 # Inference-time features
 # --------------------------------------------------------------------------
 def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
-                             schedules: pd.DataFrame) -> pd.DataFrame:
+                             schedules: pd.DataFrame, snaps: pd.DataFrame,
+                             rosters: pd.DataFrame,
+                             depth_charts: pd.DataFrame) -> pd.DataFrame:
     """Features for games that have not been played yet.
 
     Training and serving must not drift apart, so this reuses the exact
@@ -330,9 +423,13 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     history = pbp[(pbp["season"] < season)
                   | ((pbp["season"] == season) & (pbp["week"] < week))]
 
+    snap_hist = snaps[(snaps["season"] < season)
+                      | ((snaps["season"] == season) & (snaps["week"] < week))]
+
     plog = player_game_logs(history)
     tlog = team_offense_logs(history)
     dlog = team_defense_logs(history)
+    slog = player_snap_logs(snap_hist, rosters)
 
     def _placeholders(template: pd.DataFrame, keys: pd.DataFrame) -> pd.DataFrame:
         rows = keys.copy()
@@ -350,9 +447,17 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     pf = build_player_features(_placeholders(plog, p_keys))
     tf = build_team_features(_placeholders(tlog, t_keys))
     df_ = build_defense_features(_placeholders(dlog, d_keys))
+    sf = build_snap_features(_placeholders(slog, p_keys))
+    dr = depth_rank_features(depth_charts)
 
     out = targets.merge(pf, left_on=["game_id", "team", "starter_id"],
                         right_on=["game_id", "team", "player_id"], how="left")
+    out = out.drop(columns=["player_id"])
+    out = out.merge(sf, left_on=["game_id", "team", "starter_id"],
+                    right_on=["game_id", "team", "player_id"], how="left")
+    out = out.drop(columns=["player_id"])
+    out = out.merge(dr, left_on=["season", "week", "team", "starter_id"],
+                    right_on=["season", "week", "team", "player_id"], how="left")
     out = out.drop(columns=["player_id"])
     out = out.merge(tf, on=["game_id", "team"], how="left")
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
@@ -366,8 +471,11 @@ def main(refresh: bool = False) -> pd.DataFrame:
     labeled = pd.read_parquet(LABELED_PATH)
     pbp = ingest.load_pbp(SEASONS, refresh)
     schedules = ingest.load_schedules(SEASONS, refresh)
+    snaps = ingest.load_snap_counts(SEASONS, refresh)
+    rosters = ingest.load_weekly_rosters(SEASONS, refresh)
+    depth_charts = ingest.load_depth_charts(SEASONS, refresh)
 
-    feats = build_features(labeled, pbp, schedules)
+    feats = build_features(labeled, pbp, schedules, snaps, rosters, depth_charts)
     feats.to_parquet(FEATURES_PATH, index=False)
 
     cols = feature_columns(feats)

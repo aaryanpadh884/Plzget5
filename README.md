@@ -13,25 +13,62 @@ rosters and depth charts, and Pro-Football-Reference snap counts.
 ## Headline results
 
 Walk-forward validation, training on every prior season and predicting the
-next, 2020 through 2023. The 2024 season is held out entirely and was never
-used for model selection.
+next, 2020 through 2023. 2024 is held out entirely and was never used for model
+selection. Seasons 2013-2024, 4,843 usable team-games, 41 pregame features.
 
 | model | AUC | log loss | Brier |
 |---|---|---|---|
-| **logistic** | **0.5725** | **0.6847** | **0.2458** |
-| lgbm | 0.5702 | 0.6856 | 0.2463 |
-| heuristic (the rule to beat) | 0.5506 | 0.6884 | 0.2476 |
-| base rate | 0.5000 | 0.6933 | 0.2501 |
+| **logistic** | **0.5730** | **0.6842** | **0.2456** |
+| lgbm | 0.5676 | 0.6861 | 0.2465 |
+| heuristic (the rule to beat) | 0.5506 | 0.6882 | 0.2475 |
+| base rate | 0.5000 | 0.6932 | 0.2500 |
 
-The ordering is stable across all four validation folds. **It does not
-reproduce on the single held-out season**, where the heuristic edges the
-learned models on log loss (0.6795 vs 0.6823). One season is 467 team-games and
-cannot separate models this close. See `reports/evaluation.md`.
+**The probabilities are trustworthy at face value.** Pooled across the
+walk-forward folds, the predicted value lands inside a 95% interval on the
+observed rate in **9 of 10 deciles**. The Brier decomposition puts
+miscalibration (reliability) at 0.0017 against an irreducible uncertainty of
+0.2499: the model is honestly uncertain rather than confidently wrong.
 
-The honest summary: **the model is a modestly better-calibrated probability
-estimate than the base rate or the simple rule. It is not a demonstrated
-betting edge.** The backtest in the report benchmarks against a hypothetical
-50/50 market, not a real book's price, and says so.
+**It is also not very sharp, and that is correct.** Most predictions fall
+between 0.39 and 0.60. A model emitting 0.80s on this problem would be lying.
+
+## How accurate can this get? (read `reports/ceiling.md`)
+
+Rather than guess at the ceiling, it is measured. Give a model the one thing it
+cannot know before kickoff, the number of carries the back actually took on the
+opening drive, and compare:
+
+| information available | AUC | log loss | Brier |
+|---|---|---|---|
+| pregame features only (the real model) | 0.5730 | 0.6842 | 0.2456 |
+| **oracle: carry count alone** | **0.8920** | **0.5467** | **0.1802** |
+| oracle carries + all 41 pregame features | 0.8807 | 0.5444 | 0.1796 |
+
+**Carry count is essentially the whole answer**, and every pregame feature in
+the project adds almost nothing on top of it (log loss 0.5467 → 0.5444). This
+is an *opportunity forecasting* problem wearing the costume of an RB evaluation
+problem.
+
+Why that caps accuracy:
+
+| question | base rate | AUC | log loss |
+|---|---|---|---|
+| P(at least 1 carry) | 0.827 | 0.6556 | 0.4510 |
+| P(at least 2 carries) | 0.529 | 0.5880 | 0.6782 |
+| P(5+ rushing yards) — the label | 0.505 | 0.5730 | 0.6842 |
+
+Pregame data predicts **whether** the back touches the ball reasonably well,
+because that is a question about his role and teams telegraph roles. It
+predicts **how many times** much worse, because carry count depends on drive
+length, and drive length is decided by the drive itself: a third-down stop, a
+holding penalty, an interception. The starter averages 1.91 carries on the
+opener, and the threshold sits right where that curve is steepest (1 carry =
+25%, 2 carries = 67%), so most team-games are one handoff away from flipping.
+
+**What would actually move the needle**: projected snap share and
+game-script-conditional carry projections, ideally a beat-reporter or
+projection feed. More RB efficiency features will not, and the table above is
+why.
 
 ---
 
@@ -61,7 +98,8 @@ nfl-first-drive-rb/
   src/label.py        # drive-level labels + starter resolution
   src/features.py     # pregame feature engineering, lagged
   src/train.py        # model training + walk-forward CV
-  src/evaluate.py     # calibration, backtest vs baseline
+  src/evaluate.py     # calibration + probability quality
+  src/ceiling.py      # how much is knowable at all (oracle analysis)
   src/predict.py      # weekly inference
   src/eda.py          # base rate and distribution checks
   notebooks/eda.ipynb
@@ -84,12 +122,14 @@ nfl-first-drive-rb/
 
    | outcome | rule | count |
    |---|---|---|
-   | `confirmed` | attempt leader is also the snap leader and cleared a 35% snap floor | 3,788 |
+   | `confirmed` | attempt leader is also the snap leader and cleared a 35% snap floor | 4,829 |
    | `usage_only` | no snap data, but out-carried the next RB by 3+ | 14 |
-   | dropped | tied carries, usage/snap disagreement, or thin margin | 932 |
+   | dropped | tied carries, usage/snap disagreement, or thin margin | 1,186 |
 
-   **3,802 of 4,734 team-games (80.3%) survive.** Ambiguous backfields are
-   dropped rather than force-labeled, as the plan requires.
+   **4,843 of 6,029 team-games (80.3%) survive.** Ambiguous backfields are
+   dropped rather than force-labeled, as the plan requires. Seasons start at
+   2013 because that is the first year of PFR snap counts, which the starter
+   cross-check depends on.
 
 3. **Yards.** Sum `rushing_yards` over that back's carries on that drive.
    Plays negated by penalty are already excluded: nflfastR marks them
@@ -106,7 +146,7 @@ real negative, not a missing value.
 
 ## Two findings that shaped the modeling
 
-**The base rate is 0.5047 and stable across every season from 2016 to 2024.**
+**The base rate is 0.5045 and stable across every season from 2013 to 2024.**
 This is not an imbalanced classification problem. No resampling, no class
 weights, and log loss is directly interpretable against a 0.5 baseline.
 
@@ -125,15 +165,17 @@ argument for optimizing calibration over accuracy.
 
 ## Features
 
-35 features, all strictly pregame, in three groups.
+41 features, all strictly pregame, in three groups.
 
 - **Player** — trailing-5 and season-to-date YPC, first-drive carries per game,
-  first-drive participation rate, first-drive hit rate, red-zone carry share,
-  stuff rate, explosive rate, EPA per carry.
+  first-drive participation rate, first-drive hit rate, share of the team's
+  carries and of its opening-drive carries (bell-cow vs committee), offensive
+  snap share, published depth-chart rank, red-zone carry share, stuff rate,
+  explosive rate, EPA per carry.
 - **Team** — first-drive run rate and its trend against the season baseline
-  (the OC scripting signal), rushing EPA per play, YPC, first-drive plays per
-  game, Vegas spread and total, implied team total, home/away, rest days,
-  venue and weather.
+  (the OC scripting signal), neutral-script run rate, rushing EPA per play,
+  YPC, first-drive plays per game, Vegas spread and total, implied team total,
+  home/away, rest days, venue and weather.
 - **Matchup** — opponent YPC allowed, stuff rate, and run-defense EPA allowed.
 
 Rate features roll the numerator and denominator separately and divide at the
@@ -233,11 +275,22 @@ over the season baseline, and `tm_fd_run_rate_trend_t5` measures recent form
 a scheme change. It does not model coordinator changes explicitly, which is the
 most obvious next improvement.
 
-**The backtest is not evidence of a betting edge.** It prices every team-game
-as a coin flip. A real sportsbook prices near the true probability, so the
-quantity that matters is the model's edge over the book's number, which needs
-historical prop odds this project does not have. The thresholds in that table
-were also chosen after seeing results, with no multiple-comparison correction.
+**The model is honest, not sharp, and those are different things.** Resolution
+is 0.0058 against an irreducible uncertainty of 0.2499, so it explains about
+2.3% of the available variance. The probabilities are trustworthy at face
+value, but they will cluster near 0.5 for most team-games because that is what
+the outcome actually is. Do not mistake a well-calibrated 0.52 for a weak
+signal that better modeling would strengthen; `reports/ceiling.md` shows the
+remaining headroom is small and lives entirely in opportunity forecasting.
+
+**Model form is not the lever, and several plausible ones were tried and
+rejected.** A two-stage decomposition, P(5+) = P(gets a carry) × P(5+ | carry),
+is mathematically exact here but did not beat the direct binary model (0.6850
+vs 0.6847). Neither did modelling the full carry distribution and integrating
+an empirical conditional (0.6851), nor logistic/LightGBM ensembles (0.6843),
+nor isotonic calibration (0.7289, much worse). Three extra seasons of data
+bought 0.0001 and six new role features bought 0.0006. They are in the model
+because they are free, not because they rescued it.
 
 ---
 

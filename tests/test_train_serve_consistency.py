@@ -36,6 +36,9 @@ def test_inference_features_match_training_features(offline):
     """Replay a past week through the inference path and demand agreement."""
     pbp = ingest.load_pbp(SEASONS)
     schedules = ingest.load_schedules(SEASONS)
+    snaps = ingest.load_snap_counts(SEASONS)
+    rosters = ingest.load_weekly_rosters(SEASONS)
+    depth = ingest.load_depth_charts(SEASONS)
 
     truth = offline[(offline["season"] == SEASON) & (offline["week"] == WEEK)
                     & (offline["is_ambiguous"] == 0)]
@@ -48,7 +51,8 @@ def test_inference_features_match_training_features(offline):
         truth[["game_id", "team", "starter_id"]], on=["game_id", "team"],
         how="inner")
 
-    online = F.build_inference_features(targets, pbp, schedules)
+    online = F.build_inference_features(targets, pbp, schedules, snaps,
+                                        rosters, depth)
 
     cols = [c for c in F.feature_columns(offline) if c in online.columns]
     key = ["game_id", "team"]

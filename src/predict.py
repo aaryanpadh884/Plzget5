@@ -165,6 +165,8 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     schedules = ingest.load_schedules(SEASONS, refresh)
     depth_charts = ingest.load_depth_charts(SEASONS, refresh)
     injuries = ingest.load_injuries(SEASONS, refresh)
+    snaps = ingest.load_snap_counts(SEASONS, refresh)
+    rosters = ingest.load_weekly_rosters(SEASONS, refresh)
 
     targets = week_targets(schedules, season, week)
     starters = project_starters(depth_charts, injuries, season, week,
@@ -177,7 +179,8 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     if resolved.empty:
         raise RuntimeError("no starters could be projected for this week")
 
-    feats = build_inference_features(resolved, pbp, schedules)
+    feats = build_inference_features(resolved, pbp, schedules, snaps, rosters,
+                                     depth_charts)
     cols = bundle["features"]
     missing = [c for c in cols if c not in feats.columns]
     for c in missing:

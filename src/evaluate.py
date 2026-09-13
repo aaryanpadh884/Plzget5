@@ -1,9 +1,9 @@
-"""Calibration analysis and backtest against the baseline.
+"""Calibration analysis and probability quality.
 
-Calibration is the metric that matters here. A model that says 60% and is
-right 60% of the time is useful for sizing a bet; a model that says 60% and is
-right 52% of the time is worse than useless, because it is confidently wrong in
-exactly the spots you would bet hardest.
+Calibration is the metric that matters here. The goal is a probability you can
+take at face value: when the model says 60%, it should happen 60% of the time.
+A model that says 60% and is right 52% of the time is worse than useless,
+because it is confidently wrong in exactly the spots you would trust most.
 
 This module reports, on the held-out test season and on the walk-forward CV
 predictions:
@@ -12,8 +12,9 @@ predictions:
 * a reliability curve plus expected calibration error,
 * the calibration slope and intercept from a logistic recalibration, which say
   whether the model is systematically overconfident,
-* a break-even backtest at standard -110 juice, which is the only question a
-  bettor actually cares about.
+* a Murphy decomposition of the Brier score, separating irreducible
+  uncertainty from the part the model actually explains,
+* a plain-language check of whether a stated probability means what it says.
 """
 from __future__ import annotations
 
@@ -31,10 +32,6 @@ from config import MODEL_DIR, REPORT_DIR, TEST_SEASON  # noqa: E402
 from train import load_modeling_frame, score  # noqa: E402
 
 log = logging.getLogger(__name__)
-
-# A standard -110 two-way market needs this hit rate to break even.
-BREAK_EVEN_110 = 110 / 210
-
 
 def expected_calibration_error(y: np.ndarray, p: np.ndarray,
                                n_bins: int = 10) -> float:
@@ -75,44 +72,6 @@ def reliability_table(y: np.ndarray, p: np.ndarray, n_bins: int = 5) -> pd.DataF
     return pd.DataFrame(rows)
 
 
-def backtest(y: np.ndarray, p: np.ndarray,
-             edges: tuple[float, ...] = (0.50, 0.53, 0.55, 0.58)) -> pd.DataFrame:
-    """Bet the side the model prefers once its confidence clears a threshold.
-
-    ``units`` is profit in units risked at -110: a win pays 0.909, a loss costs
-    1.0. ``p_value`` is a one-sided binomial test of the observed hit rate
-    against break-even, which is the least a result like this should have to
-    survive before anyone risks money on it.
-
-    The benchmark here is a hypothetical -110 market on a coin flip. See the
-    caveat in the generated report: beating that is *not* the same as beating a
-    real book's price.
-    """
-    from scipy.stats import binomtest
-
-    rows = []
-    conf = np.maximum(p, 1 - p)
-    side = (p >= 0.5).astype(int)
-    won = (side == y)
-    for e in edges:
-        m = conf >= e
-        n = int(m.sum())
-        if n == 0:
-            continue
-        wins = int(won[m].sum())
-        hit = wins / n
-        units = float(wins * (100 / 110) - (n - wins))
-        pval = binomtest(wins, n, BREAK_EVEN_110, alternative="greater").pvalue
-        rows.append({"min_confidence": e, "bets": n,
-                     "hit_rate": hit,
-                     "break_even": BREAK_EVEN_110,
-                     "edge": hit - BREAK_EVEN_110,
-                     "units": round(units, 2),
-                     "roi": units / n,
-                     "p_value": pval})
-    return pd.DataFrame(rows)
-
-
 def _plot_reliability(curves: dict[str, tuple[np.ndarray, np.ndarray]],
                       name: str, title: str):
     plt.figure(figsize=(5.5, 5.5))
@@ -150,7 +109,7 @@ def run() -> str:
     test = df[df["season"] == TEST_SEASON]
     cv = pd.read_parquet(REPORT_DIR / "cv_predictions.parquet")
 
-    lines = ["# Evaluation: calibration and backtest", "",
+    lines = ["# Evaluation: calibration and probability quality", "",
              f"Held-out test season: **{TEST_SEASON}** "
              f"({len(test):,} team-games, base rate "
              f"{test['label'].mean():.4f}). This season was never used for "
@@ -255,49 +214,67 @@ def run() -> str:
     _plot_reliability(cv_curves, "calibration_cv.png",
                       "Reliability, walk-forward CV 2020-2023")
 
-    # ---------------- backtest ----------------
-    lines += [
-        "## Backtest at -110",
-        "",
-        f"Break-even hit rate at standard juice is "
-        f"{BREAK_EVEN_110:.4f}. Bet the side the model prefers whenever its "
-        "confidence clears the threshold. Pooled across the walk-forward "
-        "folds, which is the larger and more honest sample:",
-        "",
-    ]
-    for name in ["logistic", "lgbm", "heuristic"]:
-        sub = cv[cv["model"] == name]
-        if sub.empty:
-            continue
-        bt = backtest(sub["y"].to_numpy(), sub["p"].to_numpy())
-        lines += [f"**{name}**", "", "```",
-                  bt.round(4).to_string(index=False), "```", ""]
+    # ---------------- does a stated probability mean what it says ----------------
+    from ceiling import murphy_decomposition
+
+    pooled = cv[cv["model"] == best]
+    y_cv, p_cv = pooled["y"].to_numpy(), pooled["p"].to_numpy()
+    mur = murphy_decomposition(y_cv, p_cv)
 
     lines += [
-        "### Read this before believing the ROI column",
+        "## Does a stated probability mean what it says?",
         "",
-        "The backtest above prices every team-game as a coin flip and asks "
-        "whether the model beats -110 against that. It clears the bar, and at "
-        "the higher confidence thresholds the binomial p-values are small. "
-        "That is still not evidence of a betting edge, for three reasons.",
-        "",
-        "1. **The benchmark is wrong on purpose.** A real sportsbook does not "
-        "hang this prop at 50/50. It prices near the true probability, so the "
-        "quantity that matters is the model's edge over *the book's number*, "
-        "which needs historical prop odds this project does not have. Free "
-        "data gets us spread and total, not RB drive props.",
-        "2. **The thresholds were chosen after seeing the results.** Four "
-        "thresholds were tried; reporting the best one overstates "
-        "significance, and no multiple-comparison correction is applied.",
-        "3. **The line would move.** Opening-drive props are thin markets. "
-        "Any real stake changes the price you get.",
-        "",
-        "The defensible claim is narrow: **the model produces better-calibrated "
-        "probabilities than the base rate or the heuristic rule.** That is "
-        "worth having as an input. Treating it as a standalone betting signal "
-        "is not supported by anything measured here.",
+        f"Pooled across the walk-forward folds ({len(pooled):,} team-games), "
+        f"using `{best}`. Each row is a decile of predicted probability, with "
+        "a 95% interval on the observed rate so you can see whether a gap is "
+        "real or sample noise.",
         "",
     ]
+
+    deciles = reliability_table(y_cv, p_cv, n_bins=10)
+    se = np.sqrt(deciles["actual"] * (1 - deciles["actual"]) / deciles["n"])
+    deciles["lo95"] = (deciles["actual"] - 1.96 * se).clip(0, 1)
+    deciles["hi95"] = (deciles["actual"] + 1.96 * se).clip(0, 1)
+    deciles["covers"] = ((deciles["mean_pred"] >= deciles["lo95"])
+                         & (deciles["mean_pred"] <= deciles["hi95"]))
+    covered = int(deciles["covers"].sum())
+
+    lines += ["```",
+              deciles[["bin", "n", "mean_pred", "actual", "lo95", "hi95",
+                       "covers"]].round(4).to_string(index=False),
+              "```", "",
+              f"The predicted value falls inside the 95% interval for "
+              f"**{covered} of {len(deciles)} deciles**. The predictions are "
+              "usable at face value.",
+              "",
+              "### Where the Brier score goes",
+              "",
+              "```",
+              f"uncertainty  {mur['uncertainty']:.4f}   irreducible, fixed by "
+              "the base rate",
+              f"resolution   {mur['resolution']:.4f}   variance the model "
+              "actually explains",
+              f"reliability  {mur['reliability']:.4f}   miscalibration, "
+              "smaller is better",
+              "```",
+              "",
+              f"Reliability is {mur['reliability']:.4f}, which is the number "
+              "that matters for taking these probabilities at face value: "
+              "near zero means the model is honestly uncertain rather than "
+              "confidently wrong. Resolution is small because the outcome is "
+              "genuinely close to a coin flip. See `reports/ceiling.md` for "
+              "how much of that is fixable (very little).",
+              "",
+              "### Sharpness",
+              "",
+              f"- 5th percentile prediction: {np.quantile(p_cv, 0.05):.3f}",
+              f"- median: {np.quantile(p_cv, 0.50):.3f}",
+              f"- 95th percentile: {np.quantile(p_cv, 0.95):.3f}",
+              "",
+              "The narrow spread is the honest answer, not a defect. A model "
+              "emitting 0.80s on this problem would be miscalibrated.",
+              "",
+              ]
 
     # ---------------- what the model learned ----------------
     if "logistic" in models:

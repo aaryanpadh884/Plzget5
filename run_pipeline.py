@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-PHASES = ["ingest", "label", "eda", "features", "train", "evaluate"]
+PHASES = ["ingest", "label", "eda", "features", "train", "evaluate",
+          "ceiling"]
 
 
 def main() -> None:
@@ -28,6 +29,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     log = logging.getLogger("pipeline")
 
+    import ceiling
     import eda
     import evaluate
     import features
@@ -42,6 +44,7 @@ def main() -> None:
         "features": lambda: features.main(refresh=False),
         "train": train.main,
         "evaluate": evaluate.run,
+        "ceiling": ceiling.run,
     }
 
     for name in PHASES[PHASES.index(args.start):]:

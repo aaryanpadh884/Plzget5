@@ -102,14 +102,20 @@ def test_features_are_invariant_to_the_future():
     labeled = pd.read_parquet(LABELED_PATH)
     pbp = ingest.load_pbp(SEASONS)
     schedules = ingest.load_schedules(SEASONS)
+    snaps = ingest.load_snap_counts(SEASONS)
+    rosters = ingest.load_weekly_rosters(SEASONS)
+    depth = ingest.load_depth_charts(SEASONS)
 
-    full = F.build_features(labeled, pbp, schedules)
+    full = F.build_features(labeled, pbp, schedules, snaps, rosters, depth)
 
     is_past = (pbp["season"] < cutoff_season) | (
         (pbp["season"] == cutoff_season) & (pbp["week"] <= cutoff_week))
     lab_past = labeled[(labeled["season"] < cutoff_season) | (
         (labeled["season"] == cutoff_season) & (labeled["week"] <= cutoff_week))]
-    truncated = F.build_features(lab_past, pbp[is_past], schedules)
+    snaps_past = snaps[(snaps["season"] < cutoff_season) | (
+        (snaps["season"] == cutoff_season) & (snaps["week"] <= cutoff_week))]
+    truncated = F.build_features(lab_past, pbp[is_past], schedules, snaps_past,
+                                 rosters, depth)
 
     key = ["game_id", "team"]
     sel = ((full["season"] == cutoff_season) & (full["week"] == cutoff_week))
