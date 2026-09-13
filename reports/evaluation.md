@@ -1,16 +1,16 @@
 # Evaluation: calibration and probability quality
 
-Held-out test season: **2024** (467 team-games, base rate 0.5139). This season was never used for model selection; the hyperparameters were chosen on the walk-forward folds through 2023.
+Held-out test season: **2025** (468 team-games, base rate 0.5342). This season was never used for model selection; the hyperparameters were chosen on the walk-forward folds through 2023.
 
 ## Walk-forward CV (2020-2023, pooled)
 
 ```
               auc  logloss   brier     ece
 model                                     
-logistic   0.5727   0.6844  0.2457  0.0338
-lgbm       0.5652   0.6863  0.2466  0.0275
-heuristic  0.5367   0.6882  0.2475  0.0294
-prior      0.4799   0.6932  0.2500  0.0161
+logistic   0.5812   0.6832  0.2451  0.0304
+lgbm       0.5734   0.6847  0.2458  0.0242
+heuristic  0.5551   0.6864  0.2466  0.0324
+prior      0.4821   0.6931  0.2500  0.0149
 ```
 
 ## Held-out test season
@@ -18,25 +18,25 @@ prior      0.4799   0.6932  0.2500  0.0161
 ```
               auc  logloss   brier     ece  cal_slope  cal_intercept
 model                                                               
-lgbm       0.6050   0.6787  0.2428  0.0689     1.9401        -0.0307
-logistic   0.6116   0.6787  0.2428  0.0482     1.3111        -0.0142
-heuristic  0.5957   0.6795  0.2432  0.0566     2.3772        -0.0188
-prior      0.5000   0.6930  0.2499  0.0105     0.0008         0.0557
+lgbm       0.5753   0.6819  0.2444  0.0735     1.4808         0.0260
+logistic   0.5531   0.6830  0.2451  0.0504     0.9669         0.0456
+heuristic  0.5503   0.6857  0.2463  0.0189     1.2103         0.0638
+prior      0.5000   0.6926  0.2497  0.0297     0.0025         0.1369
 ```
 
 AUC for `prior` is not meaningful (it predicts one constant per fold) and is listed only for completeness.
 
 On the CV folds the log-loss ordering is `logistic < lgbm < heuristic < prior`, and it is stable across all four seasons. The learned models beat both the heuristic and the base rate there.
 
-**On the held-out season that ordering does not reproduce.** The best test-season log loss belongs to `lgbm` (0.6787), ahead of the CV-selected `logistic` (0.6787), a gap of 0.0000. One season is 467 team-games; the standard error on log loss at that size is larger than the spread between every model in the table. The correct reading is that the learned model's advantage over the simple rule is **real on four seasons of validation and unproven on one season of test**, not that the heuristic is better.
+**On the held-out season that ordering does not reproduce.** The best test-season log loss belongs to `lgbm` (0.6819), ahead of the CV-selected `logistic` (0.6830), a gap of 0.0012. One season is 467 team-games; the standard error on log loss at that size is larger than the spread between every model in the table. The correct reading is that the learned model's advantage over the simple rule is **real on four seasons of validation and unproven on one season of test**, not that the heuristic is better.
 
 ### Calibration slopes
 
 Slope 1.0 with intercept 0.0 is perfect. Below 1.0 means predictions are too spread out (overconfident); above 1.0 means too compressed (underconfident), so the model could safely be more aggressive.
 
-- `lgbm`: slope 1.94 - underconfident, predictions too compressed.
-- `logistic`: slope 1.31 - underconfident, predictions too compressed.
-- `heuristic`: slope 2.38 - underconfident, predictions too compressed.
+- `lgbm`: slope 1.48 - underconfident, predictions too compressed.
+- `logistic`: slope 0.97 - well calibrated.
+- `heuristic`: slope 1.21 - well calibrated.
 
 The heuristic's large slope is an artifact of its shape: it emits only two distinct probabilities, both near the base rate, so a logistic refit has to stretch them hard. `logistic` is the only model in the table sitting in the well-calibrated band, which is what the heavy regularization bought. Earlier, lightly regularized configurations scored *worse than the base rate* on log loss despite a similar AUC.
 
@@ -46,67 +46,67 @@ The heuristic's large slope is an artifact of its shape: it emits only two disti
 
 ```
  bin  n  mean_pred  actual     gap
-   1 94     0.4123  0.3617  0.0506
-   2 93     0.4859  0.4194  0.0666
-   3 93     0.5209  0.5591 -0.0382
-   4 93     0.5519  0.5914 -0.0395
-   5 94     0.5955  0.6383 -0.0428
+   1 94     0.4219  0.4362 -0.0143
+   2 93     0.5013  0.5591 -0.0579
+   3 94     0.5331  0.5638 -0.0307
+   4 93     0.5599  0.5484  0.0116
+   5 94     0.6028  0.5638  0.0390
 ```
 
 **lgbm** (test season, quintiles):
 
 ```
  bin  n  mean_pred  actual     gap
-   1 94     0.4240  0.3511  0.0729
-   2 93     0.4978  0.4194  0.0784
-   3 93     0.5267  0.6344 -0.1077
-   4 93     0.5448  0.5591 -0.0144
-   5 94     0.5616  0.6064 -0.0448
+   1 94     0.4339  0.4255  0.0083
+   2 93     0.5105  0.5591 -0.0487
+   3 94     0.5326  0.5213  0.0113
+   4 93     0.5512  0.4946  0.0565
+   5 94     0.5662  0.6702 -0.1040
 ```
 
 **heuristic** (test season, quintiles):
 
 ```
  bin   n  mean_pred  actual     gap
-   2 168     0.4511  0.3810  0.0701
-   5 299     0.5396  0.5886 -0.0491
+   2 138     0.4450  0.4493 -0.0043
+   5 330     0.5447  0.5697 -0.0250
 ```
 
 ## Does a stated probability mean what it says?
 
-Pooled across the walk-forward folds (1,739 team-games), using `logistic`. Each row is a decile of predicted probability, with a 95% interval on the observed rate so you can see whether a gap is real or sample noise.
+Pooled across the walk-forward folds (2,206 team-games), using `logistic`. Each row is a decile of predicted probability, with a 95% interval on the observed rate so you can see whether a gap is real or sample noise.
 
 ```
  bin   n  mean_pred  actual   lo95   hi95  covers
-   1 174     0.3885  0.3851 0.3128 0.4574    True
-   2 174     0.4455  0.4138 0.3406 0.4870    True
-   3 174     0.4793  0.4770 0.4028 0.5512    True
-   4 174     0.5003  0.4655 0.3914 0.5396    True
-   5 173     0.5163  0.4913 0.4168 0.5658    True
-   6 174     0.5296  0.5632 0.4895 0.6369    True
-   7 174     0.5420  0.6264 0.5546 0.6983   False
-   8 174     0.5557  0.5115 0.4372 0.5858    True
-   9 174     0.5738  0.5172 0.4430 0.5915    True
-  10 174     0.6043  0.6264 0.5546 0.6983    True
+   1 221     0.3871  0.3846 0.3205 0.4488    True
+   2 220     0.4448  0.4045 0.3397 0.4694    True
+   3 221     0.4782  0.4706 0.4048 0.5364    True
+   4 220     0.4996  0.4318 0.3664 0.4973   False
+   5 221     0.5156  0.5204 0.4545 0.5862    True
+   6 220     0.5295  0.5500 0.4843 0.6157    True
+   7 221     0.5422  0.6380 0.5746 0.7014   False
+   8 220     0.5567  0.5091 0.4430 0.5752    True
+   9 221     0.5745  0.5656 0.5003 0.6310    True
+  10 221     0.6064  0.6154 0.5512 0.6795    True
 ```
 
-The predicted value falls inside the 95% interval for **9 of 10 deciles**. The predictions are usable at face value.
+The predicted value falls inside the 95% interval for **8 of 10 deciles**. The predictions are usable at face value.
 
 ### Where the Brier score goes
 
 ```
 uncertainty  0.2499   irreducible, fixed by the base rate
-resolution   0.0058   variance the model actually explains
-reliability  0.0017   miscalibration, smaller is better
+resolution   0.0067   variance the model actually explains
+reliability  0.0018   miscalibration, smaller is better
 ```
 
-Reliability is 0.0017, which is the number that matters for taking these probabilities at face value: near zero means the model is honestly uncertain rather than confidently wrong. Resolution is small because the outcome is genuinely close to a coin flip. See `reports/ceiling.md` for how much of that is fixable (very little).
+Reliability is 0.0018, which is the number that matters for taking these probabilities at face value: near zero means the model is honestly uncertain rather than confidently wrong. Resolution is small because the outcome is genuinely close to a coin flip. See `reports/ceiling.md` for how much of that is fixable (very little).
 
 ### Sharpness
 
-- 5th percentile prediction: 0.396
+- 5th percentile prediction: 0.395
 - median: 0.523
-- 95th percentile: 0.600
+- 95th percentile: 0.601
 
 The narrow spread is the honest answer, not a defect. A model emitting 0.80s on this problem would be miscalibrated.
 
@@ -114,21 +114,21 @@ The narrow spread is the honest answer, not a defect. A model emitting 0.80s on 
 
 ```
                   feature    coef
-            rb_depth_rank -0.0590
-  opp_rush_epa_allowed_t5  0.0386
-     rb_fd_carry_share_t5  0.0351
-   rb_fd_participation_t5  0.0346
-                  is_home  0.0323
-  rb_fd_yards_per_game_t5  0.0307
-        rb_fd_hit_rate_t5  0.0301
-       implied_team_total  0.0257
-       opp_ypc_allowed_t5  0.0248
-  tm_fd_plays_per_game_t5  0.0242
+            rb_depth_rank -0.0598
+     rb_fd_carry_share_t5  0.0425
+  opp_rush_epa_allowed_t5  0.0385
+        rb_fd_hit_rate_t5  0.0375
+  rb_fd_yards_per_game_t5  0.0367
+   rb_fd_participation_t5  0.0285
+       implied_team_total  0.0282
+                  is_home  0.0264
+rb_fd_carries_per_game_t5  0.0254
+       opp_ypc_allowed_t5  0.0240
+         rb_stuff_rate_t5 -0.0238
         rb_carry_share_t5  0.0229
-                rest_days -0.0228
-rb_fd_carries_per_game_t5  0.0227
-        opp_stuff_rate_t5 -0.0210
-              team_spread  0.0203
+  tm_fd_plays_per_game_t5  0.0224
+              team_spread  0.0213
+                rest_days -0.0197
 ```
 
 Opportunity features dominate talent features. The back's recent first-drive carry volume and participation rate outrank his yards per carry, which is the scripted-opener effect the product plan warned about, showing up in the coefficients exactly as predicted.

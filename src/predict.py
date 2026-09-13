@@ -31,6 +31,13 @@ from label import standardize_team
 
 log = logging.getLogger(__name__)
 
+def _add_note(notes: pd.Series, mask: np.ndarray, text: str) -> pd.Series:
+    """Append a note to the flagged rows, keeping any note already there."""
+    notes = notes.fillna("").astype(str)
+    existing = notes.where(notes == "", notes + "; ")
+    return notes.mask(mask, existing + text)
+
+
 # Injury designations that rule a back out of starting consideration.
 # "Questionable" is deliberately not here: questionable backs start all the
 # time. It is surfaced as a warning instead.
@@ -154,7 +161,14 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
                  refresh: bool = False) -> pd.DataFrame:
     import ingest
 
-    with open(MODEL_DIR / "models.pkl", "rb") as fh:
+    # Live inference uses the production fit, trained on every game played,
+    # not the evaluation fit that holds out the most recent season.
+    bundle_path = MODEL_DIR / "models_production.pkl"
+    if not bundle_path.exists():
+        bundle_path = MODEL_DIR / "models.pkl"
+        log.warning("production models not found, falling back to %s",
+                    bundle_path.name)
+    with open(bundle_path, "rb") as fh:
         bundle = pickle.load(fh)
     if model_name not in bundle["models"]:
         raise ValueError(f"unknown model {model_name!r}; "
@@ -191,20 +205,40 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     feats["p_5plus"] = model.predict_proba(feats[cols])[:, 1]
     feats["model"] = model_name
 
-    # Players with no prior NFL game have no usable player features. Say so.
-    no_history = feats["rb_carries_per_game_t5"].isna()
+    # Early in a season the trailing windows are filled entirely by the prior
+    # season's games. Backs change teams and roles over an offseason, so those
+    # features describe a situation that may no longer exist. Flag it rather
+    # than present week 1 numbers with the same confidence as week 10.
+    feats["games_this_season"] = feats["rb_games_played_season"].fillna(0)
+    feats["note"] = _add_note(feats["note"],
+                              (feats["games_this_season"] == 0).to_numpy(),
+                              "form is from last season only")
+
+    # Players with no prior NFL game at all have no player features whatsoever;
+    # every one of them is median-imputed, so the prediction is really just the
+    # team and matchup talking. Rookies must be called out explicitly.
+    no_history = feats["rb_carries_per_game_t5"].isna().to_numpy()
+    feats["note"] = _add_note(feats["note"], no_history,
+                              "NO career carries on record (rookie); player "
+                              "features are all imputed")
     feats.loc[no_history, "needs_review"] = 1
-    feats.loc[no_history, "note"] = (
-        feats.loc[no_history, "note"].fillna("").replace("", np.nan)
-        .fillna("no prior carries on record"))
+
+    # A game that has already kicked off is not a projection.
+    played = set(pbp.loc[pbp["season"] == season, "game_id"].unique())
+    feats["already_played"] = feats["game_id"].isin(played).astype(int)
+    feats["note"] = _add_note(feats["note"],
+                              feats["already_played"].to_numpy() == 1,
+                              "GAME ALREADY PLAYED")
 
     out_cols = ["season", "week", "game_id", "team", "opponent", "is_home",
                 "starter_name", "depth_rank", "p_5plus", "model",
-                "needs_review", "note"]
-    out = feats[out_cols].sort_values("p_5plus", ascending=False)
+                "games_this_season", "already_played", "needs_review", "note"]
+    out = feats[out_cols].sort_values(["already_played", "p_5plus"],
+                                      ascending=[True, False])
 
     if not unresolved.empty:
-        pad = unresolved.assign(p_5plus=np.nan, model=model_name)
+        pad = unresolved.assign(p_5plus=np.nan, model=model_name,
+                                games_this_season=np.nan, already_played=0)
         out = pd.concat([out, pad[out_cols]], ignore_index=True)
     return out.reset_index(drop=True)
 
@@ -232,6 +266,19 @@ def main() -> None:
     print(f"\n{len(preds)} team-games | {flagged} flagged for manual review")
     print("Flagged rows have an uncertain starter. Confirm against the "
           "beat-reporter consensus before using them.")
+
+    done = int(preds["already_played"].sum())
+    if done:
+        print(f"{done} team-games have already kicked off and are listed last; "
+              "those are not projections.")
+
+    stale = int((preds["games_this_season"].fillna(0) == 0).sum())
+    if stale:
+        print(f"\n{stale} of {len(preds)} backs have no games logged in "
+              f"{args.season}, so their form features come entirely from the "
+              "prior season. Offseason team and role changes are not reflected "
+              "in those numbers. Early-season predictions are softer than the "
+              "calibration report implies; treat them accordingly.")
 
     path = args.csv or (REPORT_DIR /
                         f"predictions_{args.season}_wk{args.week}.csv")

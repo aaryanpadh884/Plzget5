@@ -213,11 +213,28 @@ def walk_forward(df: pd.DataFrame, features: list[str],
 
 
 def fit_final(df: pd.DataFrame, features: list[str], name: str):
-    """Fit on every season before the held-out test season."""
+    """Fit on every season before the held-out test season.
+
+    This is the model ``evaluate.py`` scores, so it must not have seen the test
+    season. It is deliberately *not* the model used for live inference.
+    """
     train = df[df["season"] < TEST_SEASON]
     model = MODEL_BUILDERS[name]()
     model.fit(train[features], train["label"].to_numpy())
     return model, train
+
+
+def fit_production(df: pd.DataFrame, features: list[str], name: str):
+    """Fit on every row available, including the most recent completed season.
+
+    Live predictions should use every game that has actually been played.
+    Holding out the latest season is the right call when measuring the model
+    and the wrong call when running it, so the two fits are kept separate and
+    saved to separate files.
+    """
+    model = MODEL_BUILDERS[name]()
+    model.fit(df[features], df["label"].to_numpy())
+    return model, df
 
 
 def main() -> None:
@@ -253,6 +270,22 @@ def main() -> None:
     with open(MODEL_DIR / "models.pkl", "wb") as fh:
         pickle.dump({"models": artifacts, "features": features,
                      "test_season": TEST_SEASON}, fh)
+
+    # Separate fit for live inference, trained on everything available.
+    production = {}
+    for name in model_names:
+        model, train = fit_production(df, features, name)
+        production[name] = model
+    log.info("fitted production models on all %s rows (through %s week %s)",
+             len(df), int(df["season"].max()),
+             int(df.loc[df["season"] == df["season"].max(), "week"].max()))
+    with open(MODEL_DIR / "models_production.pkl", "wb") as fh:
+        pickle.dump({"models": production, "features": features,
+                     "trained_through_season": int(df["season"].max()),
+                     "trained_through_week": int(
+                         df.loc[df["season"] == df["season"].max(),
+                                "week"].max()),
+                     "n_rows": int(len(df))}, fh)
 
     (MODEL_DIR / "metadata.json").write_text(json.dumps({
         "n_rows": int(len(df)),

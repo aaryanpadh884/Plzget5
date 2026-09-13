@@ -126,13 +126,81 @@ def load_snap_counts(seasons: Iterable[int] = SEASONS,
 # --------------------------------------------------------------------------
 # Depth charts (starter signal available *before* kickoff)
 # --------------------------------------------------------------------------
-def _build_depth_charts(seasons: Sequence[int]) -> pd.DataFrame:
-    import nfl_data_py as nfl
+# nflverse changed the depth-chart schema starting with the 2025 season. The
+# legacy feed was keyed by season/week with `position`, `depth_team` and
+# `formation`. The modern feed is a stream of timestamped snapshots keyed only
+# by `dt`, with `pos_abb`, `pos_rank` and `pos_grp` instead. Both are
+# normalized onto the legacy column names so nothing downstream has to care.
+LEGACY_DEPTH_COLUMNS = ["season", "week", "club_code", "game_type",
+                        "depth_team", "formation", "position", "gsis_id",
+                        "full_name"]
 
-    df = nfl.import_depth_charts(list(seasons))
-    if GAME_TYPES and "game_type" in df.columns:
-        df = df[df["game_type"].isin(GAME_TYPES)]
-    return df.reset_index(drop=True)
+_DEFENSIVE_GROUPS = {"Base 3-4 D", "Base 4-3 D"}
+
+
+def _normalize_modern_depth(df: pd.DataFrame, season: int,
+                            schedules: pd.DataFrame) -> pd.DataFrame:
+    """Fold a timestamped depth-chart snapshot feed into season/week rows.
+
+    Each snapshot is assigned to the next week whose games had not finished
+    when it was published, which is what a pregame depth chart means. Within a
+    team-week we then keep only the latest snapshot, i.e. the chart that stood
+    closest to kickoff.
+    """
+    import numpy as np
+
+    d = df.copy()
+    d["dt"] = pd.to_datetime(d["dt"], utc=True, errors="coerce")
+    d = d.dropna(subset=["dt", "gsis_id"])
+
+    games = schedules[schedules["season"] == season][["week", "gameday"]].copy()
+    if games.empty:
+        return pd.DataFrame(columns=LEGACY_DEPTH_COLUMNS)
+    games["gameday"] = pd.to_datetime(games["gameday"], utc=True)
+    week_end = games.groupby("week")["gameday"].max().sort_index()
+
+    idx = np.searchsorted(week_end.to_numpy(), d["dt"].to_numpy(), side="left")
+    idx = np.clip(idx, 0, len(week_end) - 1)
+    d["week"] = week_end.index.to_numpy()[idx]
+    d["season"] = season
+
+    # Keep the chart that stood closest to kickoff for each team-week.
+    latest = d.groupby(["season", "week", "team"])["dt"].transform("max")
+    d = d[d["dt"] == latest]
+
+    d["club_code"] = d["team"]
+    d["full_name"] = d["player_name"]
+    d["position"] = d["pos_abb"]
+    d["depth_team"] = pd.to_numeric(d["pos_rank"], errors="coerce").astype("Int64").astype(str)
+    d["formation"] = np.where(
+        d["pos_grp"].isin(_DEFENSIVE_GROUPS), "Defense",
+        np.where(d["pos_grp"] == "Special Teams", "Special Teams", "Offense"))
+    d["game_type"] = "REG"
+    return d[LEGACY_DEPTH_COLUMNS].reset_index(drop=True)
+
+
+def _build_depth_charts(seasons: Sequence[int]) -> pd.DataFrame:
+    schedules = load_schedules(seasons)
+    frames = []
+    for season in seasons:
+        url = f"{NFLVERSE_RELEASE}/depth_charts/depth_charts_{season}.parquet"
+        try:
+            raw = pd.read_parquet(url)
+        except Exception as exc:  # season not published yet
+            log.warning("depth charts unavailable for %s (%s)", season, exc)
+            continue
+        if "pos_rank" in raw.columns:
+            frames.append(_normalize_modern_depth(raw, season, schedules))
+        else:
+            keep = [c for c in LEGACY_DEPTH_COLUMNS if c in raw.columns]
+            legacy = raw[keep].copy()
+            if GAME_TYPES and "game_type" in legacy.columns:
+                legacy = legacy[legacy["game_type"].isin(GAME_TYPES)]
+            legacy["depth_team"] = legacy["depth_team"].astype(str)
+            frames.append(legacy)
+    if not frames:
+        return pd.DataFrame(columns=LEGACY_DEPTH_COLUMNS)
+    return pd.concat(frames, ignore_index=True)
 
 
 def load_depth_charts(seasons: Iterable[int] = SEASONS,

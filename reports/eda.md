@@ -2,31 +2,31 @@
 
 ## Sample size
 
-- Team-games with a resolvable RB: **6,029**
-- Usable after dropping ambiguous starters: **4,843** (80.3%)
-- Seasons: 2013-2024
+- Team-games with a resolvable RB: **6,577**
+- Usable after dropping ambiguous starters: **5,316** (80.8%)
+- Seasons: 2013-2026
 
 Starter resolution outcomes:
 
 ```
-confirmed     4829
-ambiguous     1186
-usage_only      14
+confirmed     5289
+ambiguous     1261
+usage_only      27
 ```
 
 Why team-games were dropped:
 
 ```
-usage_snap_disagreement    1009
-tied_carries                160
+usage_snap_disagreement    1069
+tied_carries                173
 snap_share_below_floor       15
-thin_margin_no_snaps          2
+thin_margin_no_snaps          4
 ```
 
 ## Base rate
 
-- P(first-drive rush yards >= 5) = **0.5044**
-- Positives: 2,443 / 4,843
+- P(first-drive rush yards >= 5) = **0.5075**
+- Positives: 2,698 / 5,316
 
 The label is close to a coin flip, so this is *not* an imbalanced classification problem and needs no resampling or class weighting. That is convenient: log loss and Brier score are directly interpretable against a 0.5 baseline.
 
@@ -47,36 +47,38 @@ season
 2022    0.5114   438
 2023    0.4847   458
 2024    0.5139   467
+2025    0.5362   470
+2026    1.0000     3
 ```
 
 ## The starter who never touches the ball
 
-- Team-games where the resolved starter had **zero** carries on the opening drive: **17.4%**
-- Base rate conditional on at least one carry: **0.6104**
+- Team-games where the resolved starter had **zero** carries on the opening drive: **17.3%**
+- Base rate conditional on at least one carry: **0.6139**
 
 This is the single most important structural fact in the dataset. The label is a compound event: the starter has to be given the ball on the opener *and* the carries have to total 5+ yards. Roughly one in six negatives is decided before a single rushing play happens, by play-calling rather than by the back. Any model that ignores opener participation is trying to predict yardage on drives where the back was never involved.
 
 Distribution of first-drive carries by the starter:
 
 ```
-0     841
-1    1444
-2    1132
-3     718
-4     377
-5     190
-6      86
-7      36
+0     921
+1    1560
+2    1246
+3     799
+4     419
+5     215
+6      94
+7      42
 8      12
-9       5
+9       6
 ```
 
 ## Distribution of first-drive rushing yards
 
 ```
-count    4843.000
-mean        8.160
-std        10.805
+count    5316.000
+mean        8.227
+std        10.807
 min       -14.000
 25%         0.000
 50%         5.000
@@ -85,7 +87,7 @@ max        87.000
 ```
 
 - Median is 5 yards, sitting right on the 5-yard line, which is why the base rate lands near 0.5.
-- 25.2% of team-games land between 3 and 7 yards, so a large share of outcomes are decided by a single yard or two. That caps how sharp any model can be here and is the strongest argument for optimizing calibration over accuracy.
+- 25.1% of team-games land between 3 and 7 yards, so a large share of outcomes are decided by a single yard or two. That caps how sharp any model can be here and is the strongest argument for optimizing calibration over accuracy.
 
 ## Strongest linear correlates of the label
 

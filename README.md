@@ -13,15 +13,17 @@ rosters and depth charts, and Pro-Football-Reference snap counts.
 ## Headline results
 
 Walk-forward validation, training on every prior season and predicting the
-next, 2020 through 2023. 2024 is held out entirely and was never used for model
-selection. Seasons 2013-2024, 4,843 usable team-games, 41 pregame features.
+next, 2020 through 2024. 2025 is held out entirely and was never used for model
+selection. Seasons 2013-2026, 5,316 usable team-games, 41 pregame features.
+`TEST_SEASON` is the last *completed* season, which is not the same as
+`LAST_SEASON` once an in-progress season is being pulled.
 
 | model | AUC | log loss | Brier |
 |---|---|---|---|
-| **logistic** | **0.5730** | **0.6842** | **0.2456** |
-| lgbm | 0.5676 | 0.6861 | 0.2465 |
-| heuristic (the rule to beat) | 0.5506 | 0.6882 | 0.2475 |
-| base rate | 0.5000 | 0.6932 | 0.2500 |
+| **logistic** | **0.5807** | **0.6831** | **0.2450** |
+| lgbm | 0.5751 | 0.6846 | 0.2458 |
+| heuristic (the rule to beat) | 0.5596 | 0.6864 | 0.2466 |
+| base rate | 0.5000 | 0.6931 | 0.2500 |
 
 **The probabilities are trustworthy at face value.** Pooled across the
 walk-forward folds, the predicted value lands inside a 95% interval on the
@@ -126,7 +128,7 @@ nfl-first-drive-rb/
    | `usage_only` | no snap data, but out-carried the next RB by 3+ | 14 |
    | dropped | tied carries, usage/snap disagreement, or thin margin | 1,186 |
 
-   **4,843 of 6,029 team-games (80.3%) survive.** Ambiguous backfields are
+   **5,316 of 6,577 team-games (80.8%) survive.** Ambiguous backfields are
    dropped rather than force-labeled, as the plan requires. Seasons start at
    2013 because that is the first year of PFR snap counts, which the starter
    cross-check depends on.
@@ -293,6 +295,32 @@ bought 0.0001 and six new role features bought 0.0006. They are in the model
 because they are free, not because they rescued it.
 
 ---
+
+## Two model fits, on purpose
+
+`train.py` saves two bundles, because holding out the latest season is right
+when measuring a model and wrong when running it.
+
+- `models.pkl` trains on seasons before `TEST_SEASON` and is what
+  `evaluate.py` scores. It has never seen the test season.
+- `models_production.pkl` trains on every row available, including the most
+  recent completed season and any games already played in the current one.
+  This is what `predict.py` loads.
+
+## Depth-chart schema change (2025+)
+
+nflverse replaced the depth-chart feed starting in 2025. The legacy format was
+keyed by season and week with `position`, `depth_team` and `formation`. The
+modern format is a stream of timestamped snapshots keyed only by `dt`, carrying
+`pos_abb`, `pos_rank` and `pos_grp` instead, with no season or week column at
+all. `ingest.py` normalizes both onto the legacy names: each snapshot is
+assigned to the next week whose games had not finished when it was published,
+and within a team-week only the latest snapshot is kept, which is the chart
+that stood closest to kickoff.
+
+Worth knowing because the failure was silent: the old ingest filtered on
+`game_type == "REG"`, a column the modern feed does not have, so every 2025 and
+2026 row was dropped without an error.
 
 ## Environment notes
 

@@ -27,10 +27,16 @@ FEATURES_PATH = PROCESSED_DIR / "features.parquet"
 # --------------------------------------------------------------------------
 # Season range
 # --------------------------------------------------------------------------
-# nflfastR play-by-play is reliable well before this, but 2016+ keeps the
-# sample in the modern-offense era, which is what the product plan asks for.
+# nflfastR play-by-play goes back to 1999, but 2013 is the first season of
+# Pro-Football-Reference snap counts, which the starter cross-check in
+# label.py depends on. Earlier seasons cannot be labeled to the same standard.
 FIRST_SEASON = 2013
-LAST_SEASON = 2024
+
+# The latest season to pull. Keep this current: it is the single constant that
+# decides whether the model is training on the most recent completed season or
+# a stale one. Pulling an in-progress season is fine and expected; it simply
+# contributes however many games have been played.
+LAST_SEASON = 2026
 SEASONS = list(range(FIRST_SEASON, LAST_SEASON + 1))
 
 # --------------------------------------------------------------------------
@@ -67,7 +73,11 @@ TRAILING_WINDOW = 5  # trailing N-game rolling windows
 # Seasons used as validation folds (each trained on all prior seasons).
 CV_START_SEASON = 2020
 
-# Final held-out test season, never touched during model selection.
-TEST_SEASON = LAST_SEASON
+# Final held-out test season, never touched during model selection. This must
+# be the last *completed* season, which is not the same as LAST_SEASON once an
+# in-progress season is being pulled. Models scored against this are trained
+# only on earlier seasons; the model used for live inference is trained on
+# everything available and saved separately (see train.py).
+TEST_SEASON = 2025
 
 RANDOM_STATE = 1701

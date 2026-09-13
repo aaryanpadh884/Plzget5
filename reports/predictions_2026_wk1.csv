@@ -1,0 +1,33 @@
+season,week,game_id,team,opponent,is_home,starter_name,depth_rank,p_5plus,model,games_this_season,already_played,needs_review,note
+2026,1,2026_01_BAL_IND,BAL,IND,0,Derrick Henry,1.0,0.6291102663028405,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_TB_CIN,CIN,TB,1,Chase Brown,1.0,0.6003015134696417,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_ARI_LAC,LAC,ARI,1,Omarion Hampton,1.0,0.5947221387607317,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_TB_CIN,TB,CIN,0,Bucky Irving,1.0,0.5921864688751046,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_BUF_HOU,BUF,HOU,0,James Cook III,1.0,0.5794565806060089,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_DAL_NYG,DAL,NYG,0,Javonte Williams,1.0,0.5794026561740545,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_WAS_PHI,PHI,WAS,1,Saquon Barkley,1.0,0.5676313954523412,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_DAL_NYG,NYG,DAL,1,Cam Skattebo,1.0,0.5675240414948257,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_CHI_CAR,CHI,CAR,0,D'Andre Swift,1.0,0.5656595765651623,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_GB_MIN,MIN,GB,1,Aaron Jones Sr.,1.0,0.5625445935826329,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_NO_DET,DET,NO,1,Jahmyr Gibbs,1.0,0.5622164790514503,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_BAL_IND,IND,BAL,1,Jonathan Taylor,1.0,0.561383721592946,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_MIA_LV,LV,MIA,1,Ashton Jeanty,1.0,0.559090825091233,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_MIA_LV,MIA,LV,0,De'Von Achane,1.0,0.5341694654451571,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_NYJ_TEN,TEN,NYJ,1,Tony Pollard,1.0,0.5341294154280246,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_DEN_KC,DEN,KC,0,J.K. Dobbins,1.0,0.5299603452261409,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_ATL_PIT,ATL,PIT,0,Bijan Robinson,1.0,0.5297751961897653,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_DEN_KC,KC,DEN,1,Kenneth Walker III,1.0,0.5099057240429099,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_CHI_CAR,CAR,CHI,1,Chuba Hubbard,1.0,0.5080693950127501,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_ATL_PIT,PIT,ATL,1,Jaylen Warren,1.0,0.49507979262358176,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_CLE_JAX,CLE,JAX,0,Quinshon Judkins,1.0,0.49045485756662666,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_NO_DET,NO,DET,0,Travis Etienne Jr.,1.0,0.48378024286910437,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_WAS_PHI,WAS,PHI,0,Jacory Croskey-Merritt,1.0,0.4762845915160379,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_NYJ_TEN,NYJ,TEN,0,Breece Hall,1.0,0.47331038793135266,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_ARI_LAC,ARI,LAC,0,Jeremiyah Love,1.0,0.47078023503073524,logistic,0.0,0,1,listed Questionable; form is from last season only; NO career carries on record (rookie); player features are all imputed
+2026,1,2026_01_GB_MIN,GB,MIN,0,MarShawn Lloyd,1.0,0.46669459033304994,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_BUF_HOU,HOU,BUF,1,David Montgomery,1.0,0.4626082248339474,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_CLE_JAX,JAX,CLE,1,Bhayshul Tuten,1.0,0.4427407195424344,logistic,0.0,0,0,form is from last season only
+2026,1,2026_01_SF_LA,LA,SF,1,Kyren Williams,1.0,0.5942975889705718,logistic,0.0,1,0,form is from last season only; GAME ALREADY PLAYED
+2026,1,2026_01_NE_SEA,NE,SEA,0,Rhamondre Stevenson,1.0,0.5682240278690938,logistic,0.0,1,0,form is from last season only; GAME ALREADY PLAYED
+2026,1,2026_01_SF_LA,SF,LA,0,Christian McCaffrey,1.0,0.5399553054849678,logistic,0.0,1,0,form is from last season only; GAME ALREADY PLAYED
+2026,1,2026_01_NE_SEA,SEA,NE,1,Jadarian Price,1.0,0.5328306859220038,logistic,0.0,1,1,form is from last season only; NO career carries on record (rookie); player features are all imputed; GAME ALREADY PLAYED
