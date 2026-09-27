@@ -325,6 +325,46 @@ def build_defense_features(logs: pd.DataFrame) -> pd.DataFrame:
     return out[keep].rename(columns={"team": "opponent"})
 
 
+def defense_concessions(labeled: pd.DataFrame) -> pd.DataFrame:
+    """How often each defense has already conceded the event, per prior game.
+
+    The mirror of the player-side hit count: for each team, the number of
+    opposing first drives on which the starting RB reached the threshold. A
+    team plays one game a week and faces one opposing opener per game, so the
+    denominator is simply games played.
+
+    Ambiguous-starter team-games are excluded, because a concession is only
+    meaningful if we know whose carries it was. That makes the denominator the
+    count of *resolvable* openers faced, not games played, which is why it is
+    reported alongside the numerator rather than as a bare rate.
+
+    Keyed by the defending team; ``build_features`` joins it on ``opponent``.
+    """
+    lab = labeled[labeled["is_ambiguous"] == 0]
+    log = (lab[["game_id", "season", "week", "opponent", "label"]]
+           .rename(columns={"opponent": "team", "label": "conceded"})
+           .copy())
+    log["faced"] = 1
+
+    out = _lagged(log, ["team"], ["conceded", "faced"], TRAILING_WINDOW,
+                  f"t{TRAILING_WINDOW}")
+    out = _expanding(out, ["team", "season"], ["conceded", "faced"], "std")
+
+    t = f"t{TRAILING_WINDOW}"
+    out = out.rename(columns={
+        "conceded_std": "opp_fd_conceded_season",
+        "faced_std": "opp_fd_faced_season",
+        f"conceded_{t}": f"opp_fd_conceded_{t}",
+        f"faced_{t}": f"opp_fd_faced_{t}",
+    })
+    out[f"opp_fd_concede_rate_{t}"] = _safe_div(out[f"opp_fd_conceded_{t}"],
+                                                out[f"opp_fd_faced_{t}"])
+    keep = ["season", "week", "team", "opp_fd_conceded_season",
+            "opp_fd_faced_season", f"opp_fd_conceded_{t}", f"opp_fd_faced_{t}",
+            f"opp_fd_concede_rate_{t}"]
+    return out[keep]
+
+
 def coach_continuity(schedules: pd.DataFrame) -> pd.DataFrame:
     """Whether a team's head coach changed from the prior season.
 
@@ -464,6 +504,7 @@ def build_features(labeled: pd.DataFrame, pbp: pd.DataFrame,
     wc = window_composition(plog)
     cc = coach_continuity(schedules)
     oc = oline_continuity(rosters)
+    dcon = defense_concessions(labeled)
 
     out = labeled.merge(pf, left_on=["game_id", "team", "starter_id"],
                         right_on=["game_id", "team", "player_id"], how="left")
@@ -481,6 +522,10 @@ def build_features(labeled: pd.DataFrame, pbp: pd.DataFrame,
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
     out = out.merge(cc, on=["season", "team"], how="left")
     out = out.merge(oc, on=["season", "week", "team"], how="left")
+    out = out.merge(dcon, left_on=["season", "week", "opponent"],
+                    right_on=["season", "week", "team"], how="left",
+                    suffixes=("", "_dropme"))
+    out = out.drop(columns=[c for c in out.columns if c.endswith("_dropme")])
     out = add_context_features(out, schedules)
     return out.sort_values(["season", "week", "game_id", "team"]).reset_index(drop=True)
 
@@ -503,6 +548,17 @@ FEATURE_COLUMNS = None  # resolved at runtime by feature_columns()
 # continuity shows no monotonic relationship across quartiles. So these are
 # reader context, not a correction the model needs.
 DIAGNOSTIC_COLUMNS = [
+    # Opponent concession history, including the rate. Measured and kept OUT of
+    # the model: the next-game label rate is flat across the whole range, 0.539
+    # when the defense has conceded none of its last five openers and 0.533
+    # when it has conceded all five. Five games of a near-coin-flip event says
+    # nothing about the sixth. The paired CV gain was +0.00014 log loss at
+    # t=1.63, which this flatness identifies as noise rather than signal.
+    "opp_fd_concede_rate_t5",
+    "opp_fd_conceded_season",
+    "opp_fd_faced_season",
+    f"opp_fd_conceded_t{TRAILING_WINDOW}",
+    f"opp_fd_faced_t{TRAILING_WINDOW}",
     # Raw hit counts. rb_fd_hit_rate_t5 is the model input; these are the
     # human-readable counts behind it and must not be fed in alongside it.
     "rb_fd_hits_season",
@@ -556,7 +612,8 @@ LEAKY_COLUMNS = [
 def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
                              schedules: pd.DataFrame, snaps: pd.DataFrame,
                              rosters: pd.DataFrame,
-                             depth_charts: pd.DataFrame) -> pd.DataFrame:
+                             depth_charts: pd.DataFrame,
+                             labeled: pd.DataFrame = None) -> pd.DataFrame:
     """Features for games that have not been played yet.
 
     Training and serving must not drift apart, so this reuses the exact
@@ -606,6 +663,20 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     cc = coach_continuity(schedules)
     oc = oline_continuity(rosters)
 
+    # Opponent concession history needs labeled outcomes, truncated to games
+    # played before this week exactly as the play-by-play is.
+    if labeled is None:
+        labeled = pd.read_parquet(LABELED_PATH)
+    lab_hist = labeled[(labeled["season"] < season)
+                       | ((labeled["season"] == season)
+                          & (labeled["week"] < week))]
+    dcon_log = _placeholders(
+        lab_hist[["game_id", "season", "week", "opponent", "label",
+                  "is_ambiguous"]].rename(columns={"opponent": "team"}),
+        d_keys)
+    dcon = defense_concessions(
+        dcon_log.rename(columns={"team": "opponent"}))
+
     out = targets.merge(pf, left_on=["game_id", "team", "starter_id"],
                         right_on=["game_id", "team", "player_id"], how="left")
     out = out.drop(columns=["player_id"])
@@ -622,6 +693,10 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
     out = out.merge(cc, on=["season", "team"], how="left")
     out = out.merge(oc, on=["season", "week", "team"], how="left")
+    out = out.merge(dcon, left_on=["season", "week", "opponent"],
+                    right_on=["season", "week", "team"], how="left",
+                    suffixes=("", "_dropme"))
+    out = out.drop(columns=[c for c in out.columns if c.endswith("_dropme")])
     return add_context_features(out, schedules)
 
 

@@ -1,33 +1,33 @@
-season,week,game_id,team,opponent,is_home,starter_name,depth_rank,p_5plus,model,hits_this_season,games_this_season,hits_last5,games_last5,trailing_from_this_season,same_team_share,new_head_coach,oline_continuity,already_played,needs_review,note
-2026,3,2026_03_BAL_DAL,BAL,DAL,0,Derrick Henry,1.0,0.6341839723472202,logistic,0,2,3,5,0.4,1.0,1.0,0.4,0,0,form mostly from last season; team has a new head coach
-2026,3,2026_03_LAC_BUF,BUF,LAC,1,James Cook III,1.0,0.595503827666048,logistic,2,2,5,5,0.4,1.0,0.0,0.5833333333333334,0,0,form mostly from last season
-2026,3,2026_03_KC_MIA,KC,MIA,0,Kenneth Walker III,1.0,0.5835533164295423,logistic,2,2,4,5,0.4,0.4,0.0,0.6923076923076923,0,0,form mostly from last season; changed teams; prior form is from another roster
-2026,3,2026_03_LA_DEN,DEN,LA,1,J.K. Dobbins,1.0,0.5813466746290684,logistic,1,2,4,5,0.4,1.0,0.0,0.8,0,0,form mostly from last season
-2026,3,2026_03_BAL_DAL,DAL,BAL,1,Javonte Williams,1.0,0.5749408516341983,logistic,0,2,3,5,0.4,1.0,0.0,0.6428571428571429,0,0,form mostly from last season
-2026,3,2026_03_LA_DEN,LA,DEN,0,Kyren Williams,1.0,0.571170991758125,logistic,1,2,2,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
-2026,3,2026_03_ARI_SF,SF,ARI,1,Christian McCaffrey,1.0,0.5689682499892436,logistic,2,2,3,5,0.4,1.0,0.0,0.6,0,0,form mostly from last season
-2026,3,2026_03_HOU_IND,IND,HOU,1,Jonathan Taylor,1.0,0.5646655957890061,logistic,2,2,4,5,0.4,1.0,0.0,0.6153846153846154,0,0,form mostly from last season
-2026,3,2026_03_NYJ_DET,NYJ,DET,0,Breece Hall,1.0,0.5597862820121426,logistic,2,2,3,5,0.4,1.0,0.0,0.6363636363636364,0,0,form mostly from last season
-2026,3,2026_03_NE_JAX,NE,JAX,0,Rhamondre Stevenson,1.0,0.5497171052060362,logistic,2,2,5,5,0.4,1.0,0.0,0.5,0,0,form mostly from last season
-2026,3,2026_03_MIN_TB,TB,MIN,1,Bucky Irving,1.0,0.5399908023593346,logistic,1,2,4,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
-2026,3,2026_03_CIN_PIT,CIN,PIT,0,Chase Brown,1.0,0.5356938666046575,logistic,0,2,3,5,0.4,1.0,0.0,0.6666666666666666,0,0,form mostly from last season
-2026,3,2026_03_PHI_CHI,CHI,PHI,1,D'Andre Swift,1.0,0.5353699683783264,logistic,2,2,4,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
-2026,3,2026_03_TEN_NYG,NYG,TEN,1,Cam Skattebo,1.0,0.5350848683445516,logistic,2,2,4,5,0.4,1.0,1.0,0.5,0,0,form mostly from last season; team has a new head coach
-2026,3,2026_03_NYJ_DET,DET,NYJ,1,Jahmyr Gibbs,1.0,0.5264223445285976,logistic,0,2,1,5,0.4,1.0,0.0,0.5,0,0,form mostly from last season
-2026,3,2026_03_CAR_CLE,CLE,CAR,1,Quinshon Judkins,1.0,0.5225608552629457,logistic,1,2,3,5,0.4,1.0,1.0,0.42857142857142855,0,0,form mostly from last season; team has a new head coach
-2026,3,2026_03_SEA_WAS,SEA,WAS,0,Jadarian Price,1.0,0.5222014847223925,logistic,1,2,1,2,1.0,1.0,0.0,0.7857142857142857,0,0,
-2026,3,2026_03_CAR_CLE,CAR,CLE,0,Chuba Hubbard,1.0,0.5206403271637224,logistic,2,2,2,5,0.4,1.0,0.0,0.4666666666666667,0,0,form mostly from last season
-2026,3,2026_03_TEN_NYG,TEN,NYG,0,Tony Pollard,1.0,0.5187477174535,logistic,1,2,3,5,0.4,1.0,1.0,0.5384615384615384,0,0,form mostly from last season; team has a new head coach
-2026,3,2026_03_LAC_BUF,LAC,BUF,0,Omarion Hampton,1.0,0.5175730463849426,logistic,2,2,4,5,0.4,1.0,0.0,0.375,0,0,form mostly from last season
-2026,3,2026_03_LV_NO,LV,NO,0,Ashton Jeanty,1.0,0.5041596775402863,logistic,1,2,1,5,0.4,1.0,1.0,0.5,0,0,form mostly from last season; team has a new head coach
-2026,3,2026_03_KC_MIA,MIA,KC,1,De'Von Achane,1.0,0.5006925557214482,logistic,1,2,2,5,0.4,1.0,1.0,0.45454545454545453,0,0,form mostly from last season; team has a new head coach
-2026,3,2026_03_PHI_CHI,PHI,CHI,0,Saquon Barkley,1.0,0.49200504030507214,logistic,0,2,1,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
-2026,3,2026_03_MIN_TB,MIN,TB,0,Aaron Jones Sr.,1.0,0.4902373518526131,logistic,1,2,2,5,0.4,1.0,0.0,0.6153846153846154,0,0,form mostly from last season
-2026,3,2026_03_SEA_WAS,WAS,SEA,1,Jacory Croskey-Merritt,1.0,0.48709104970167677,logistic,1,2,3,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
-2026,3,2026_03_HOU_IND,HOU,IND,0,David Montgomery,1.0,0.4594363220297843,logistic,0,2,0,5,0.4,0.4,0.0,0.3333333333333333,0,0,form mostly from last season; changed teams; prior form is from another roster
-2026,3,2026_03_CIN_PIT,PIT,CIN,1,Jaylen Warren,1.0,0.4494082914405282,logistic,0,2,2,5,0.4,1.0,1.0,0.75,0,1,listed Questionable; form mostly from last season; team has a new head coach
-2026,3,2026_03_LV_NO,NO,LV,1,Travis Etienne Jr.,1.0,0.4425331220842598,logistic,1,2,1,5,0.4,0.4,0.0,0.6428571428571429,0,0,form mostly from last season; changed teams; prior form is from another roster
-2026,3,2026_03_NE_JAX,JAX,NE,1,Bhayshul Tuten,1.0,0.4391477126121983,logistic,1,2,1,5,0.4,1.0,0.0,0.5294117647058824,0,0,form mostly from last season
-2026,3,2026_03_ARI_SF,ARI,SF,0,Jeremiyah Love,1.0,0.4354921713087001,logistic,1,2,1,2,1.0,1.0,0.0,0.5714285714285714,0,0,
-2026,3,2026_03_ATL_GB,ATL,GB,0,Bijan Robinson,1.0,0.4828186582001296,logistic,0,2,1,5,0.4,1.0,0.0,0.5,1,0,form mostly from last season; GAME ALREADY PLAYED
-2026,3,2026_03_ATL_GB,GB,ATL,1,Kaleb Johnson,1.0,0.41657903692444886,logistic,0,1,0,5,0.2,0.2,0.0,0.7142857142857143,1,0,form mostly from last season; changed teams; prior form is from another roster; GAME ALREADY PLAYED
+season,week,game_id,team,opponent,is_home,starter_name,depth_rank,p_5plus,model,hits_this_season,games_this_season,hits_last5,games_last5,opp_gave_up_season,opp_faced_season,opp_gave_up_last5,opp_faced_last5,trailing_from_this_season,same_team_share,new_head_coach,oline_continuity,already_played,needs_review,note
+2026,3,2026_03_BAL_DAL,BAL,DAL,0,Derrick Henry,1.0,0.6341839723472202,logistic,0,2,3,5,1,1,3,5,0.4,1.0,1.0,0.4,0,0,form mostly from last season; team has a new head coach
+2026,3,2026_03_LAC_BUF,BUF,LAC,1,James Cook III,1.0,0.595503827666048,logistic,2,2,5,5,1,2,4,5,0.4,1.0,0.0,0.5833333333333334,0,0,form mostly from last season
+2026,3,2026_03_KC_MIA,KC,MIA,0,Kenneth Walker III,1.0,0.5835533164295423,logistic,2,2,4,5,2,2,4,5,0.4,0.4,0.0,0.6923076923076923,0,0,form mostly from last season; changed teams; prior form is from another roster
+2026,3,2026_03_LA_DEN,DEN,LA,1,J.K. Dobbins,1.0,0.5813466746290684,logistic,1,2,4,5,1,1,3,5,0.4,1.0,0.0,0.8,0,0,form mostly from last season
+2026,3,2026_03_BAL_DAL,DAL,BAL,1,Javonte Williams,1.0,0.5749408516341983,logistic,0,2,3,5,1,1,2,5,0.4,1.0,0.0,0.6428571428571429,0,0,form mostly from last season
+2026,3,2026_03_LA_DEN,LA,DEN,0,Kyren Williams,1.0,0.571170991758125,logistic,1,2,2,5,1,2,1,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
+2026,3,2026_03_ARI_SF,SF,ARI,1,Christian McCaffrey,1.0,0.5689682499892436,logistic,2,2,3,5,1,2,3,5,0.4,1.0,0.0,0.6,0,0,form mostly from last season
+2026,3,2026_03_HOU_IND,IND,HOU,1,Jonathan Taylor,1.0,0.5646655957890061,logistic,2,2,4,5,1,2,2,5,0.4,1.0,0.0,0.6153846153846154,0,0,form mostly from last season
+2026,3,2026_03_NYJ_DET,NYJ,DET,0,Breece Hall,1.0,0.5597862820121426,logistic,2,2,3,5,1,1,3,5,0.4,1.0,0.0,0.6363636363636364,0,0,form mostly from last season
+2026,3,2026_03_NE_JAX,NE,JAX,0,Rhamondre Stevenson,1.0,0.5497171052060362,logistic,2,2,5,5,1,1,2,5,0.4,1.0,0.0,0.5,0,0,form mostly from last season
+2026,3,2026_03_MIN_TB,TB,MIN,1,Bucky Irving,1.0,0.5399908023593346,logistic,1,2,4,5,1,1,3,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
+2026,3,2026_03_CIN_PIT,CIN,PIT,0,Chase Brown,1.0,0.5356938666046575,logistic,0,2,3,5,0,2,1,5,0.4,1.0,0.0,0.6666666666666666,0,0,form mostly from last season
+2026,3,2026_03_PHI_CHI,CHI,PHI,1,D'Andre Swift,1.0,0.5353699683783264,logistic,2,2,4,5,1,2,3,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
+2026,3,2026_03_TEN_NYG,NYG,TEN,1,Cam Skattebo,1.0,0.5350848683445516,logistic,2,2,4,5,1,1,2,5,0.4,1.0,1.0,0.5,0,0,form mostly from last season; team has a new head coach
+2026,3,2026_03_NYJ_DET,DET,NYJ,1,Jahmyr Gibbs,1.0,0.5264223445285976,logistic,0,2,1,5,1,1,3,5,0.4,1.0,0.0,0.5,0,0,form mostly from last season
+2026,3,2026_03_CAR_CLE,CLE,CAR,1,Quinshon Judkins,1.0,0.5225608552629457,logistic,1,2,3,5,1,2,3,5,0.4,1.0,1.0,0.42857142857142855,0,0,form mostly from last season; team has a new head coach
+2026,3,2026_03_SEA_WAS,SEA,WAS,0,Jadarian Price,1.0,0.5222014847223925,logistic,1,2,1,2,0,2,2,5,1.0,1.0,0.0,0.7857142857142857,0,0,
+2026,3,2026_03_CAR_CLE,CAR,CLE,0,Chuba Hubbard,1.0,0.5206403271637224,logistic,2,2,2,5,1,2,4,5,0.4,1.0,0.0,0.4666666666666667,0,0,form mostly from last season
+2026,3,2026_03_TEN_NYG,TEN,NYG,0,Tony Pollard,1.0,0.5187477174535,logistic,1,2,3,5,0,1,0,5,0.4,1.0,1.0,0.5384615384615384,0,0,form mostly from last season; team has a new head coach
+2026,3,2026_03_LAC_BUF,LAC,BUF,0,Omarion Hampton,1.0,0.5175730463849426,logistic,2,2,4,5,0,1,1,5,0.4,1.0,0.0,0.375,0,0,form mostly from last season
+2026,3,2026_03_LV_NO,LV,NO,0,Ashton Jeanty,1.0,0.5041596775402863,logistic,1,2,1,5,0,2,2,5,0.4,1.0,1.0,0.5,0,0,form mostly from last season; team has a new head coach
+2026,3,2026_03_KC_MIA,MIA,KC,1,De'Von Achane,1.0,0.5006925557214482,logistic,1,2,2,5,1,1,4,5,0.4,1.0,1.0,0.45454545454545453,0,0,form mostly from last season; team has a new head coach
+2026,3,2026_03_PHI_CHI,PHI,CHI,0,Saquon Barkley,1.0,0.49200504030507214,logistic,0,2,1,5,2,2,3,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
+2026,3,2026_03_MIN_TB,MIN,TB,0,Aaron Jones Sr.,1.0,0.4902373518526131,logistic,1,2,2,5,0,2,1,5,0.4,1.0,0.0,0.6153846153846154,0,0,form mostly from last season
+2026,3,2026_03_SEA_WAS,WAS,SEA,1,Jacory Croskey-Merritt,1.0,0.48709104970167677,logistic,1,2,3,5,1,1,4,5,0.4,1.0,0.0,0.6923076923076923,0,0,form mostly from last season
+2026,3,2026_03_HOU_IND,HOU,IND,0,David Montgomery,1.0,0.4594363220297843,logistic,0,2,0,5,1,2,2,5,0.4,0.4,0.0,0.3333333333333333,0,0,form mostly from last season; changed teams; prior form is from another roster
+2026,3,2026_03_CIN_PIT,PIT,CIN,1,Jaylen Warren,1.0,0.4494082914405282,logistic,0,2,2,5,1,1,4,5,0.4,1.0,1.0,0.75,0,1,listed Questionable; form mostly from last season; team has a new head coach
+2026,3,2026_03_LV_NO,NO,LV,1,Travis Etienne Jr.,1.0,0.4425331220842598,logistic,1,2,1,5,1,2,3,5,0.4,0.4,0.0,0.6428571428571429,0,0,form mostly from last season; changed teams; prior form is from another roster
+2026,3,2026_03_NE_JAX,JAX,NE,1,Bhayshul Tuten,1.0,0.4391477126121983,logistic,1,2,1,5,1,2,2,5,0.4,1.0,0.0,0.5294117647058824,0,0,form mostly from last season
+2026,3,2026_03_ARI_SF,ARI,SF,0,Jeremiyah Love,1.0,0.4354921713087001,logistic,1,2,1,2,2,2,4,5,1.0,1.0,0.0,0.5714285714285714,0,0,
+2026,3,2026_03_ATL_GB,ATL,GB,0,Bijan Robinson,1.0,0.4828186582001296,logistic,0,2,1,5,1,1,4,5,0.4,1.0,0.0,0.5,1,0,form mostly from last season; GAME ALREADY PLAYED
+2026,3,2026_03_ATL_GB,GB,ATL,1,Kaleb Johnson,1.0,0.41657903692444886,logistic,0,1,0,5,1,1,3,5,0.2,0.2,0.0,0.7142857142857143,1,0,form mostly from last season; changed teams; prior form is from another roster; GAME ALREADY PLAYED

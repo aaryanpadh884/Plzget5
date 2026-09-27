@@ -217,6 +217,15 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     feats["games_this_season"] = feats["rb_fd_games_season"].fillna(0).astype(int)
     feats["hits_last5"] = feats["rb_fd_hits_t5"].fillna(0).astype(int)
     feats["games_last5"] = feats["rb_fd_games_t5"].fillna(0).astype(int)
+
+    # The same counts from the defence's side: how often this opponent has
+    # already given the event up. Shown because it is the obvious thing to want
+    # to know, and kept out of the model because it does not predict (see
+    # features.DIAGNOSTIC_COLUMNS).
+    feats["opp_gave_up_season"] = feats["opp_fd_conceded_season"].fillna(0).astype(int)
+    feats["opp_faced_season"] = feats["opp_fd_faced_season"].fillna(0).astype(int)
+    feats["opp_gave_up_last5"] = feats["opp_fd_conceded_t5"].fillna(0).astype(int)
+    feats["opp_faced_last5"] = feats["opp_fd_faced_t5"].fillna(0).astype(int)
     feats["trailing_from_this_season"] = feats["rb_trailing_this_season_share"]
     feats["same_team_share"] = feats["rb_trailing_same_team_share"]
     feats["new_head_coach"] = feats["tm_new_head_coach"]
@@ -259,7 +268,10 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     out_cols = ["season", "week", "game_id", "team", "opponent", "is_home",
                 "starter_name", "depth_rank", "p_5plus", "model",
                 "hits_this_season", "games_this_season",
-                "hits_last5", "games_last5", "trailing_from_this_season",
+                "hits_last5", "games_last5",
+                "opp_gave_up_season", "opp_faced_season",
+                "opp_gave_up_last5", "opp_faced_last5",
+                "trailing_from_this_season",
                 "same_team_share", "new_head_coach", "oline_continuity",
                 "already_played", "needs_review", "note"]
     out = feats[out_cols].sort_values(["already_played", "p_5plus"],
@@ -268,7 +280,10 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     if not unresolved.empty:
         pad = unresolved.assign(p_5plus=np.nan, model=model_name,
                                 hits_this_season=np.nan, hits_last5=np.nan,
-                                games_last5=np.nan,
+                                games_last5=np.nan, opp_gave_up_season=np.nan,
+                                opp_faced_season=np.nan,
+                                opp_gave_up_last5=np.nan,
+                                opp_faced_last5=np.nan,
                                 games_this_season=np.nan, already_played=0,
                                 trailing_from_this_season=np.nan,
                                 same_team_share=np.nan, new_head_coach=np.nan,
