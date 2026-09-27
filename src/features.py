@@ -180,6 +180,47 @@ def team_defense_logs(pbp: pd.DataFrame) -> pd.DataFrame:
 W = TRAILING_WINDOW
 
 
+def window_composition(logs: pd.DataFrame, window: int = None) -> pd.DataFrame:
+    """Describe what a row's trailing window is actually made of.
+
+    Two things can make a trailing window describe a situation that no longer
+    exists, and they are different problems:
+
+    * the window reaches back into the prior season, and
+    * the games in it were played for a different team.
+
+    A rolling window silently mixes both in. These columns expose the mix so a
+    reader (and the model) can tell a back whose form is five current-season
+    games with his current team from one whose is five games elsewhere last
+    year. Both are computed from prior games only.
+    """
+    w = window or TRAILING_WINDOW
+    df = logs.sort_values(["player_id"] + ORDER).copy()
+
+    # Prior games this season, capped at the window length.
+    prior_this_season = df.groupby(["player_id", "season"], sort=False).cumcount()
+    df["rb_trailing_games_this_season"] = np.minimum(prior_this_season, w)
+
+    # Prior games in the window, and how many were for the same team.
+    by_player = df.groupby(["player_id"], sort=False)["games"]
+    by_player_team = df.groupby(["player_id", "team"], sort=False)["games"]
+    total = by_player.transform(
+        lambda x: x.shift(1).rolling(w, min_periods=1).sum())
+    same = by_player_team.transform(
+        lambda x: x.shift(1).rolling(w, min_periods=1).sum())
+
+    df["rb_trailing_same_team_share"] = _safe_div(same, total)
+    df["rb_trailing_this_season_share"] = _safe_div(
+        df["rb_trailing_games_this_season"], total)
+    df["rb_changed_team"] = (df["rb_trailing_same_team_share"] < 1.0).astype(float)
+    df.loc[total.isna() | (total == 0), "rb_changed_team"] = np.nan
+
+    keep = ["game_id", "team", "player_id", "rb_trailing_games_this_season",
+            "rb_trailing_same_team_share", "rb_trailing_this_season_share",
+            "rb_changed_team"]
+    return df[keep]
+
+
 def build_player_features(logs: pd.DataFrame) -> pd.DataFrame:
     cols = ["carries", "rush_yards", "rush_epa", "fd_carries", "fd_yards",
             "rz_carries", "stuffs", "explosives", "games", "fd_hit", "fd_played",
@@ -277,6 +318,72 @@ def build_defense_features(logs: pd.DataFrame) -> pd.DataFrame:
     return out[keep].rename(columns={"team": "opponent"})
 
 
+def coach_continuity(schedules: pd.DataFrame) -> pd.DataFrame:
+    """Whether a team's head coach changed from the prior season.
+
+    First-drive play-calling is the most scheme-dependent thing in this whole
+    problem, so a coaching change is the clearest signal that a team's
+    scripted-opener history no longer describes the team. Head coach is what
+    free data gives us; the offensive coordinator would be better and is not
+    available here.
+    """
+    from label import standardize_team
+
+    sched = schedules.copy()
+    frames = []
+    for side, coach in (("home_team", "home_coach"), ("away_team", "away_coach")):
+        if coach not in sched.columns:
+            return pd.DataFrame(columns=["season", "team", "tm_new_head_coach"])
+        part = sched[["season", side, coach]].rename(
+            columns={side: "team", coach: "coach"})
+        frames.append(part)
+    allc = pd.concat(frames, ignore_index=True).dropna(subset=["coach"])
+    allc["team"] = standardize_team(allc["team"])
+
+    # The coach a team played most of its games under that season.
+    modal = (allc.groupby(["season", "team"])["coach"]
+                 .agg(lambda v: v.mode().iat[0]).reset_index())
+    modal = modal.sort_values(["team", "season"])
+    modal["prev_coach"] = modal.groupby("team")["coach"].shift(1)
+    modal["tm_new_head_coach"] = np.where(
+        modal["prev_coach"].isna(), np.nan,
+        (modal["coach"] != modal["prev_coach"]).astype(float))
+    return modal[["season", "team", "tm_new_head_coach"]]
+
+
+def oline_continuity(rosters: pd.DataFrame) -> pd.DataFrame:
+    """Share of this week's offensive line that was on the team last season.
+
+    Uses published weekly rosters, so it is known before kickoff and available
+    in week 1, unlike anything derived from snaps already played. A rebuilt line
+    is a reason to discount a back's prior-season rushing efficiency even when
+    he stayed put.
+    """
+    from label import standardize_team
+
+    ol = rosters[rosters["position"].isin(["OL", "T", "G", "C"])].copy()
+    ol["team"] = standardize_team(ol["team"])
+    ol["week"] = pd.to_numeric(ol["week"], errors="coerce")
+    ol = ol.dropna(subset=["gsis_id", "week"])
+
+    # Who was on each team at any point in a season.
+    prior = (ol[["season", "team", "gsis_id"]].drop_duplicates()
+               .assign(season=lambda d: d["season"] + 1)
+               .assign(was_here=1))
+
+    cur = ol[["season", "week", "team", "gsis_id"]].drop_duplicates()
+    merged = cur.merge(prior, on=["season", "team", "gsis_id"], how="left")
+    merged["was_here"] = merged["was_here"].fillna(0)
+
+    out = (merged.groupby(["season", "week", "team"], as_index=False)
+                 .agg(tm_oline_continuity=("was_here", "mean"),
+                      tm_oline_size=("gsis_id", "nunique")))
+    # A team's first season in the data has no prior roster to compare against.
+    first = out["season"] == out["season"].min()
+    out.loc[first, "tm_oline_continuity"] = np.nan
+    return out[["season", "week", "team", "tm_oline_continuity"]]
+
+
 def depth_rank_features(depth_charts: pd.DataFrame) -> pd.DataFrame:
     """Published depth-chart standing for each RB in each week.
 
@@ -347,6 +454,9 @@ def build_features(labeled: pd.DataFrame, pbp: pd.DataFrame,
     df_ = build_defense_features(dlog)
     sf = build_snap_features(slog)
     dr = depth_rank_features(depth_charts)
+    wc = window_composition(plog)
+    cc = coach_continuity(schedules)
+    oc = oline_continuity(rosters)
 
     out = labeled.merge(pf, left_on=["game_id", "team", "starter_id"],
                         right_on=["game_id", "team", "player_id"], how="left")
@@ -357,13 +467,42 @@ def build_features(labeled: pd.DataFrame, pbp: pd.DataFrame,
     out = out.merge(dr, left_on=["season", "week", "team", "starter_id"],
                     right_on=["season", "week", "team", "player_id"], how="left")
     out = out.drop(columns=["player_id"])
+    out = out.merge(wc, left_on=["game_id", "team", "starter_id"],
+                    right_on=["game_id", "team", "player_id"], how="left")
+    out = out.drop(columns=["player_id"])
     out = out.merge(tf, on=["game_id", "team"], how="left")
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
+    out = out.merge(cc, on=["season", "team"], how="left")
+    out = out.merge(oc, on=["season", "week", "team"], how="left")
     out = add_context_features(out, schedules)
     return out.sort_values(["season", "week", "game_id", "team"]).reset_index(drop=True)
 
 
 FEATURE_COLUMNS = None  # resolved at runtime by feature_columns()
+
+
+# Continuity columns. These are computed, carried on the frame, and shown in
+# the weekly output so a reader can see which projections rest on stale
+# situations, but they are deliberately NOT model inputs.
+#
+# Measured, walk-forward CV 2020-2024: adding all six to the 41-feature model
+# made it worse everywhere, including on the rows they describe (log loss
+# 0.6832 -> 0.6837 overall; on rows where the RB changed team, AUC 0.6045 ->
+# 0.5937). Six weak features dilute a heavily regularized model.
+#
+# The model is also not measurably worse in the situations they flag: RB
+# changed team scores AUC 0.6045 against 0.5824 for backs who stayed, and a new
+# head coach scores 0.6817 log loss against 0.6837 for a returning one. O-line
+# continuity shows no monotonic relationship across quartiles. So these are
+# reader context, not a correction the model needs.
+DIAGNOSTIC_COLUMNS = [
+    "rb_trailing_games_this_season",
+    "rb_trailing_same_team_share",
+    "rb_trailing_this_season_share",
+    "rb_changed_team",
+    "tm_new_head_coach",
+    "tm_oline_continuity",
+]
 
 
 def feature_columns(df: pd.DataFrame) -> list[str]:
@@ -372,7 +511,8 @@ def feature_columns(df: pd.DataFrame) -> list[str]:
     # The rb_/tm_/opp_ prefixes already cover the depth-chart columns, which
     # are pregame-legal despite not being lagged (see depth_rank_features).
     prefixes = ("rb_", "tm_", "opp_")
-    engineered = [c for c in df.columns if c.startswith(prefixes)]
+    engineered = [c for c in df.columns
+                  if c.startswith(prefixes) and c not in DIAGNOSTIC_COLUMNS]
     context = ["team_spread", "total_line", "implied_team_total", "is_home",
                "rest_days", "is_dome", "temp_f", "wind_mph", "is_grass",
                "div_game", "week"]
@@ -449,6 +589,9 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     df_ = build_defense_features(_placeholders(dlog, d_keys))
     sf = build_snap_features(_placeholders(slog, p_keys))
     dr = depth_rank_features(depth_charts)
+    wc = window_composition(_placeholders(plog, p_keys))
+    cc = coach_continuity(schedules)
+    oc = oline_continuity(rosters)
 
     out = targets.merge(pf, left_on=["game_id", "team", "starter_id"],
                         right_on=["game_id", "team", "player_id"], how="left")
@@ -459,8 +602,13 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     out = out.merge(dr, left_on=["season", "week", "team", "starter_id"],
                     right_on=["season", "week", "team", "player_id"], how="left")
     out = out.drop(columns=["player_id"])
+    out = out.merge(wc, left_on=["game_id", "team", "starter_id"],
+                    right_on=["game_id", "team", "player_id"], how="left")
+    out = out.drop(columns=["player_id"])
     out = out.merge(tf, on=["game_id", "team"], how="left")
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
+    out = out.merge(cc, on=["season", "team"], how="left")
+    out = out.merge(oc, on=["season", "week", "team"], how="left")
     return add_context_features(out, schedules)
 
 

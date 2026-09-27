@@ -296,6 +296,66 @@ because they are free, not because they rescued it.
 
 ---
 
+## Continuity diagnostics (and why they are not model inputs)
+
+New team, new coach, new offensive line: the worry is that a back's trailing
+numbers describe a situation that no longer exists. Six columns measure it, and
+they appear in the weekly output:
+
+| column | meaning |
+|---|---|
+| `trailing_from_this_season` | share of the trailing five games played this season |
+| `same_team_share` | share of those games played for the current team |
+| `new_head_coach` | the team's head coach changed from last season |
+| `oline_continuity` | share of this week's OL roster that was on the team last season |
+| `games_this_season` | prior games this season, capped at the window |
+| `rb_changed_team` | any trailing game was for another roster |
+
+**They are deliberately excluded from the model.** Walk-forward CV 2020-2024,
+adding all six to the 41-feature model:
+
+| rows | log loss | AUC |
+|---|---|---|
+| all | 0.6832 -> 0.6837 | 0.5812 -> 0.5779 |
+| RB changed team | 0.6849 -> 0.6859 | 0.6045 -> 0.5937 |
+| new head coach | 0.6817 -> 0.6819 | 0.5842 -> 0.5815 |
+
+Worse everywhere, including on the rows they describe. Six weak features dilute
+a heavily regularized model.
+
+**The model is also not measurably worse in those situations**, which was the
+premise worth testing:
+
+| situation | n | log loss | AUC |
+|---|---|---|---|
+| RB changed team | 117 | 0.6849 | **0.6045** |
+| RB same team | 2,087 | 0.6831 | 0.5824 |
+| new head coach | 549 | **0.6817** | 0.5842 |
+| same head coach | 1,657 | 0.6837 | 0.5795 |
+
+Backs who changed teams score the *highest* AUC in the sample. O-line
+continuity shows no monotonic relationship across quartiles (Q3 is the worst,
+not Q1), so an apparent effect at a hand-picked cutoff was noise.
+
+So these columns are reader context: reasons to sanity-check a row against
+beat reporting, not a correction the model needs. The trailing window plus the
+depth-chart and share features appear to absorb these situations already.
+
+### On dropping the prior season entirely
+
+Also measured, since it is the obvious version of the same idea. Restricting
+every trailing window to the current season, walk-forward CV:
+
+| | n | spanning | season-only | diff (95% CI) |
+|---|---|---|---|---|
+| all weeks | 2,211 | 0.6831 | 0.6831 | +0.0000 ± 0.0020 |
+| weeks 5+ | 1,695 | 0.6832 | 0.6821 | +0.0011 ± 0.0011 |
+
+Zero over a full season. Per-player hybrids that switch after K current-season
+games (K = 2, 3, 4, 5) all landed at 0.6830-0.6832. The rolling window already
+ages the prior season out on its own: by week 6 it is entirely current-season
+with no code change.
+
 ## Two model fits, on purpose
 
 `train.py` saves two bundles, because holding out the latest season is right

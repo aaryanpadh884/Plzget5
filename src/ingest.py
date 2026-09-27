@@ -232,6 +232,8 @@ SCHEDULE_COLUMNS = [
     "game_id", "season", "game_type", "week", "gameday", "weekday", "gametime",
     "home_team", "away_team", "home_rest", "away_rest", "spread_line",
     "total_line", "roof", "surface", "temp", "wind", "div_game",
+    # Head coach per side, used to detect a coaching change between seasons.
+    "home_coach", "away_coach",
 ]
 
 

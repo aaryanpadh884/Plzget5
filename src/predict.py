@@ -205,14 +205,35 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     feats["p_5plus"] = model.predict_proba(feats[cols])[:, 1]
     feats["model"] = model_name
 
-    # Early in a season the trailing windows are filled entirely by the prior
-    # season's games. Backs change teams and roles over an offseason, so those
-    # features describe a situation that may no longer exist. Flag it rather
-    # than present week 1 numbers with the same confidence as week 10.
-    feats["games_this_season"] = feats["rb_games_played_season"].fillna(0)
-    feats["note"] = _add_note(feats["note"],
-                              (feats["games_this_season"] == 0).to_numpy(),
-                              "form is from last season only")
+    # Continuity diagnostics. These are not model inputs (see
+    # features.DIAGNOSTIC_COLUMNS for the measurements that decided that); they
+    # are here so a reader can see which projections rest on a situation that
+    # may no longer exist. The graded shares replace an earlier binary flag
+    # that cleared as soon as a back logged one game, which made week 2 output
+    # read fresher than it was.
+    feats["games_this_season"] = feats["rb_trailing_games_this_season"].fillna(0)
+    feats["trailing_from_this_season"] = feats["rb_trailing_this_season_share"]
+    feats["same_team_share"] = feats["rb_trailing_same_team_share"]
+    feats["new_head_coach"] = feats["tm_new_head_coach"]
+    feats["oline_continuity"] = feats["tm_oline_continuity"]
+
+    # Most of a back's form coming from last season is worth saying out loud.
+    mostly_last_season = (feats["trailing_from_this_season"].fillna(0) < 0.5)
+    feats["note"] = _add_note(
+        feats["note"], mostly_last_season.to_numpy(),
+        "form mostly from last season")
+
+    # Form earned somewhere else describes a role he may no longer have.
+    changed = (feats["same_team_share"].fillna(1.0) < 1.0)
+    feats["note"] = _add_note(
+        feats["note"], changed.to_numpy(),
+        "changed teams; prior form is from another roster")
+
+    # A new head coach is the clearest reason a team's scripted-opener history
+    # may not carry forward, since the opener is the most scheme-driven part.
+    feats["note"] = _add_note(
+        feats["note"], (feats["new_head_coach"].fillna(0) == 1).to_numpy(),
+        "team has a new head coach")
 
     # Players with no prior NFL game at all have no player features whatsoever;
     # every one of them is median-imputed, so the prediction is really just the
@@ -232,13 +253,18 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
 
     out_cols = ["season", "week", "game_id", "team", "opponent", "is_home",
                 "starter_name", "depth_rank", "p_5plus", "model",
-                "games_this_season", "already_played", "needs_review", "note"]
+                "games_this_season", "trailing_from_this_season",
+                "same_team_share", "new_head_coach", "oline_continuity",
+                "already_played", "needs_review", "note"]
     out = feats[out_cols].sort_values(["already_played", "p_5plus"],
                                       ascending=[True, False])
 
     if not unresolved.empty:
         pad = unresolved.assign(p_5plus=np.nan, model=model_name,
-                                games_this_season=np.nan, already_played=0)
+                                games_this_season=np.nan, already_played=0,
+                                trailing_from_this_season=np.nan,
+                                same_team_share=np.nan, new_head_coach=np.nan,
+                                oline_continuity=np.nan)
         out = pd.concat([out, pad[out_cols]], ignore_index=True)
     return out.reset_index(drop=True)
 
@@ -272,13 +298,20 @@ def main() -> None:
         print(f"{done} team-games have already kicked off and are listed last; "
               "those are not projections.")
 
-    stale = int((preds["games_this_season"].fillna(0) == 0).sum())
-    if stale:
-        print(f"\n{stale} of {len(preds)} backs have no games logged in "
-              f"{args.season}, so their form features come entirely from the "
-              "prior season. Offseason team and role changes are not reflected "
-              "in those numbers. Early-season predictions are softer than the "
-              "calibration report implies; treat them accordingly.")
+    share = preds["trailing_from_this_season"]
+    if share.notna().any():
+        print(f"\nTrailing-window freshness: median "
+              f"{share.median():.0%} of each back's trailing five games are "
+              f"from {args.season}. "
+              f"{int((share.fillna(0) < 0.5).sum())} of {len(preds)} rest "
+              "mostly on last season.")
+    moved = int((preds["same_team_share"].fillna(1.0) < 1.0).sum())
+    coaches = int((preds["new_head_coach"].fillna(0) == 1).sum())
+    print(f"Continuity: {moved} back(s) carry form from another roster; "
+          f"{coaches} team(s) have a new head coach.")
+    print("These are context, not model inputs. Measured on 2020-2024, the "
+          "model is not less accurate in these situations, so treat them as "
+          "reasons to sanity-check a row rather than to discount it.")
 
     path = args.csv or (REPORT_DIR /
                         f"predictions_{args.season}_wk{args.week}.csv")
