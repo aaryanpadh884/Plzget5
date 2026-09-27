@@ -23,12 +23,12 @@ Two things fall out of this table.
 ```
                          mean  size
 carries on first drive             
-0                       0.000   912
-1                       0.247  1550
-2                       0.671  1244
-3                       0.890   800
-4                       0.952   417
-5                       0.972   214
+0                       0.000   918
+1                       0.247  1557
+2                       0.671  1248
+3                       0.889   804
+4                       0.952   420
+5                       0.972   215
 6                       0.987   156
 ```
 
@@ -38,10 +38,10 @@ The threshold sits exactly where the carry distribution is densest. One carry is
 
 ```
                        question  base rate    AUC  log loss
-          P(at least 1 carries)     0.8277 0.6428    0.4503
-          P(at least 2 carries)     0.5349 0.5846    0.6800
-          P(at least 3 carries)     0.2998 0.5902    0.5916
-P(5+ rushing yards) [the label]     0.5080 0.5807    0.6831
+          P(at least 1 carries)     0.8274 0.6428    0.4503
+          P(at least 2 carries)     0.5346 0.5846    0.6800
+          P(at least 3 carries)     0.2999 0.5902    0.5916
+P(5+ rushing yards) [the label]     0.5077 0.5807    0.6831
 ```
 
 This is the crux. Pregame data predicts **whether** the back touches the ball reasonably well, because that is a question about his role and teams telegraph roles. It predicts **how many times** much worse, because carry count depends on how long the drive lasts, and drive length is decided by the drive itself: a third-down conversion, a holding penalty, an interception. None of that is knowable on Saturday night.
