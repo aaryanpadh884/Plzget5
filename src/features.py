@@ -158,6 +158,48 @@ def team_offense_logs(pbp: pd.DataFrame) -> pd.DataFrame:
     return logs
 
 
+def team_defense_fd_logs(pbp: pd.DataFrame) -> pd.DataFrame:
+    """Per team-game, the opening drive each defence faced.
+
+    Needs every play on the drive, not just the runs, because the quantity of
+    interest is a rate: of the plays offences ran against this defence on their
+    opening drive, what share were runs. A defence that gets run at on the
+    opener is seeing a different game plan from one that gets thrown at.
+    """
+    plays = pbp[pbp["defteam"].notna() & pbp["posteam"].notna()
+                & pbp["play_type"].isin(["run", "pass"])].copy()
+
+    first = (pbp[pbp["posteam"].notna() & pbp["fixed_drive"].notna()]
+             .groupby(["game_id", "posteam"], as_index=False)["fixed_drive"]
+             .min().rename(columns={"fixed_drive": "first_drive"}))
+    plays = plays.merge(first, on=["game_id", "posteam"], how="left")
+    on_first = plays["fixed_drive"] == plays["first_drive"]
+
+    plays["team"] = standardize_team(plays["defteam"])
+    plays["fd_faced"] = on_first.astype(int)
+    plays["fd_runs_faced"] = (on_first & (plays["play_type"] == "run")).astype(int)
+
+    logs = (plays.groupby(["game_id", "season", "week", "team"], as_index=False)
+                 .agg(def_fd_plays_faced=("fd_faced", "sum"),
+                      def_fd_runs_faced=("fd_runs_faced", "sum")))
+    logs["games"] = 1
+    return logs
+
+
+def build_defense_fd_features(logs: pd.DataFrame) -> pd.DataFrame:
+    cols = ["def_fd_plays_faced", "def_fd_runs_faced", "games"]
+    out = _lagged(logs, ["team"], cols, W, f"t{W}")
+    out = _expanding(out, ["team", "season"], cols, "std")
+    t = f"t{W}"
+    out[f"opp_fd_run_rate_faced_{t}"] = _safe_div(out[f"def_fd_runs_faced_{t}"],
+                                                 out[f"def_fd_plays_faced_{t}"])
+    out["opp_fd_run_rate_faced_season"] = _safe_div(out["def_fd_runs_faced_std"],
+                                                    out["def_fd_plays_faced_std"])
+    keep = ["game_id", "team", f"opp_fd_run_rate_faced_{t}",
+            "opp_fd_run_rate_faced_season"]
+    return out[keep].rename(columns={"team": "opponent"})
+
+
 def team_defense_logs(pbp: pd.DataFrame) -> pd.DataFrame:
     """Per team-game run defense, keyed by the defending team."""
     runs = rush_plays(pbp).copy()
@@ -494,11 +536,13 @@ def build_features(labeled: pd.DataFrame, pbp: pd.DataFrame,
     plog = player_game_logs(pbp)
     tlog = team_offense_logs(pbp)
     dlog = team_defense_logs(pbp)
+    dfdlog = team_defense_fd_logs(pbp)
     slog = player_snap_logs(snaps, rosters)
 
     pf = build_player_features(plog)
     tf = build_team_features(tlog)
     df_ = build_defense_features(dlog)
+    dfd = build_defense_fd_features(dfdlog)
     sf = build_snap_features(slog)
     dr = depth_rank_features(depth_charts)
     wc = window_composition(plog)
@@ -520,6 +564,7 @@ def build_features(labeled: pd.DataFrame, pbp: pd.DataFrame,
     out = out.drop(columns=["player_id"])
     out = out.merge(tf, on=["game_id", "team"], how="left")
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
+    out = out.merge(dfd, on=["game_id", "opponent"], how="left")
     out = out.merge(cc, on=["season", "team"], how="left")
     out = out.merge(oc, on=["season", "week", "team"], how="left")
     out = out.merge(dcon, left_on=["season", "week", "opponent"],
@@ -548,6 +593,14 @@ FEATURE_COLUMNS = None  # resolved at runtime by feature_columns()
 # continuity shows no monotonic relationship across quartiles. So these are
 # reader context, not a correction the model needs.
 DIAGNOSTIC_COLUMNS = [
+    # How often offences choose to run at this defence on the opener. Measured
+    # and kept OUT of the model: the next-game label rate is flat across
+    # quintiles (0.501, 0.497, 0.518, 0.518, 0.505 from least to most run at),
+    # the paired CV gain was +0.00006 at t=0.39, and the correlation with the
+    # label is +0.010. Shown because it is genuinely useful context for reading
+    # a matchup, not because it predicts.
+    f"opp_fd_run_rate_faced_t{TRAILING_WINDOW}",
+    "opp_fd_run_rate_faced_season",
     # Opponent concession history, including the rate. Measured and kept OUT of
     # the model: the next-game label rate is flat across the whole range, 0.539
     # when the defense has conceded none of its last five openers and 0.533
@@ -639,6 +692,7 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     plog = player_game_logs(history)
     tlog = team_offense_logs(history)
     dlog = team_defense_logs(history)
+    dfdlog = team_defense_fd_logs(history)
     slog = player_snap_logs(snap_hist, rosters)
 
     def _placeholders(template: pd.DataFrame, keys: pd.DataFrame) -> pd.DataFrame:
@@ -657,6 +711,7 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     pf = build_player_features(_placeholders(plog, p_keys))
     tf = build_team_features(_placeholders(tlog, t_keys))
     df_ = build_defense_features(_placeholders(dlog, d_keys))
+    dfd = build_defense_fd_features(_placeholders(dfdlog, d_keys))
     sf = build_snap_features(_placeholders(slog, p_keys))
     dr = depth_rank_features(depth_charts)
     wc = window_composition(_placeholders(plog, p_keys))
@@ -691,6 +746,7 @@ def build_inference_features(targets: pd.DataFrame, pbp: pd.DataFrame,
     out = out.drop(columns=["player_id"])
     out = out.merge(tf, on=["game_id", "team"], how="left")
     out = out.merge(df_, on=["game_id", "opponent"], how="left")
+    out = out.merge(dfd, on=["game_id", "opponent"], how="left")
     out = out.merge(cc, on=["season", "team"], how="left")
     out = out.merge(oc, on=["season", "week", "team"], how="left")
     out = out.merge(dcon, left_on=["season", "week", "opponent"],

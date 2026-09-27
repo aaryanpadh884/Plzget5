@@ -222,6 +222,13 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     # already given the event up. Shown because it is the obvious thing to want
     # to know, and kept out of the model because it does not predict (see
     # features.DIAGNOSTIC_COLUMNS).
+    # Play-calling on the opener, both directions: how often this team runs on
+    # its own opener, and how often offences run at this defence on theirs.
+    # The team-side rate is a model input; the defence-side one is not (see
+    # features.DIAGNOSTIC_COLUMNS).
+    feats["fd_run_pct"] = feats["tm_fd_run_rate_season"]
+    feats["opp_fd_run_pct_faced"] = feats["opp_fd_run_rate_faced_season"]
+
     feats["opp_gave_up_season"] = feats["opp_fd_conceded_season"].fillna(0).astype(int)
     feats["opp_faced_season"] = feats["opp_fd_faced_season"].fillna(0).astype(int)
     feats["opp_gave_up_last5"] = feats["opp_fd_conceded_t5"].fillna(0).astype(int)
@@ -269,6 +276,7 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
                 "starter_name", "depth_rank", "p_5plus", "model",
                 "hits_this_season", "games_this_season",
                 "hits_last5", "games_last5",
+                "fd_run_pct", "opp_fd_run_pct_faced",
                 "opp_gave_up_season", "opp_faced_season",
                 "opp_gave_up_last5", "opp_faced_last5",
                 "trailing_from_this_season",
@@ -280,7 +288,9 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     if not unresolved.empty:
         pad = unresolved.assign(p_5plus=np.nan, model=model_name,
                                 hits_this_season=np.nan, hits_last5=np.nan,
-                                games_last5=np.nan, opp_gave_up_season=np.nan,
+                                games_last5=np.nan, fd_run_pct=np.nan,
+                                opp_fd_run_pct_faced=np.nan,
+                                opp_gave_up_season=np.nan,
                                 opp_faced_season=np.nan,
                                 opp_gave_up_last5=np.nan,
                                 opp_faced_last5=np.nan,
