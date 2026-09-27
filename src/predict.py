@@ -211,7 +211,12 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
     # may no longer exist. The graded shares replace an earlier binary flag
     # that cleared as soon as a back logged one game, which made week 2 output
     # read fresher than it was.
-    feats["games_this_season"] = feats["rb_trailing_games_this_season"].fillna(0)
+    # How often this back has actually done the thing being predicted. These
+    # are counts of prior games only, so week 3 shows weeks 1-2.
+    feats["hits_this_season"] = feats["rb_fd_hits_season"].fillna(0).astype(int)
+    feats["games_this_season"] = feats["rb_fd_games_season"].fillna(0).astype(int)
+    feats["hits_last5"] = feats["rb_fd_hits_t5"].fillna(0).astype(int)
+    feats["games_last5"] = feats["rb_fd_games_t5"].fillna(0).astype(int)
     feats["trailing_from_this_season"] = feats["rb_trailing_this_season_share"]
     feats["same_team_share"] = feats["rb_trailing_same_team_share"]
     feats["new_head_coach"] = feats["tm_new_head_coach"]
@@ -253,7 +258,8 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
 
     out_cols = ["season", "week", "game_id", "team", "opponent", "is_home",
                 "starter_name", "depth_rank", "p_5plus", "model",
-                "games_this_season", "trailing_from_this_season",
+                "hits_this_season", "games_this_season",
+                "hits_last5", "games_last5", "trailing_from_this_season",
                 "same_team_share", "new_head_coach", "oline_continuity",
                 "already_played", "needs_review", "note"]
     out = feats[out_cols].sort_values(["already_played", "p_5plus"],
@@ -261,6 +267,8 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
 
     if not unresolved.empty:
         pad = unresolved.assign(p_5plus=np.nan, model=model_name,
+                                hits_this_season=np.nan, hits_last5=np.nan,
+                                games_last5=np.nan,
                                 games_this_season=np.nan, already_played=0,
                                 trailing_from_this_season=np.nan,
                                 same_team_share=np.nan, new_head_coach=np.nan,

@@ -244,6 +244,13 @@ def build_player_features(logs: pd.DataFrame) -> pd.DataFrame:
     out["rb_fd_participation_season"] = _safe_div(out["fd_played_std"],
                                                   out["games_std"])
     out[f"rb_fd_hit_rate_{t}"] = _safe_div(out[f"fd_hit_{t}"], out[f"games_{t}"])
+    # Raw counts of the thing being predicted, for the weekly output. The rate
+    # above is the model input; these are the readable version of it, and they
+    # are diagnostics rather than features so nothing is double-counted.
+    out["rb_fd_hits_season"] = out["fd_hit_std"]
+    out["rb_fd_games_season"] = out["games_std"]
+    out[f"rb_fd_hits_{t}"] = out[f"fd_hit_{t}"]
+    out[f"rb_fd_games_{t}"] = out[f"games_{t}"]
     # Backfield concentration. A back taking 80% of his team's carries is a
     # different proposition from one splitting them, even at equal volume.
     out[f"rb_carry_share_{t}"] = _safe_div(out[f"carries_{t}"],
@@ -496,6 +503,12 @@ FEATURE_COLUMNS = None  # resolved at runtime by feature_columns()
 # continuity shows no monotonic relationship across quartiles. So these are
 # reader context, not a correction the model needs.
 DIAGNOSTIC_COLUMNS = [
+    # Raw hit counts. rb_fd_hit_rate_t5 is the model input; these are the
+    # human-readable counts behind it and must not be fed in alongside it.
+    "rb_fd_hits_season",
+    "rb_fd_games_season",
+    f"rb_fd_hits_t{TRAILING_WINDOW}",
+    f"rb_fd_games_t{TRAILING_WINDOW}",
     "rb_trailing_games_this_season",
     "rb_trailing_same_team_share",
     "rb_trailing_this_season_share",
