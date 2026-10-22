@@ -1,9 +1,12 @@
-nfl_data_py>=0.3.2
-pandas>=1.5,<2.0
+# nfl_data_py is deliberately NOT used: it pins pandas<2 (no wheels on
+# Python 3.13) and fetches some sources over plain HTTP from a host many
+# egress proxies block. src/ingest.py reads the nflverse releases directly.
+pandas>=1.5
 numpy>=1.23
 pyarrow>=10.0
 scikit-learn>=1.2
 lightgbm>=3.3
 xgboost>=1.7
 matplotlib>=3.6
+scipy>=1.10
 pytest>=7.0

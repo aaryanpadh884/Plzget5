@@ -1,10 +1,15 @@
 """Pull and cache the free data sources this project depends on.
 
-All sources are nflverse releases served from GitHub, or the nfldata schedule
-mirror. nfl_data_py's own ``import_schedules``/``import_weekly_rosters`` reach
-for ``habitatring.com`` over plain HTTP, which is unavailable behind many
-corporate egress proxies, so those two are loaded from the GitHub mirrors
-directly instead.
+Every source is read straight from its nflverse GitHub release (or the nfldata
+schedule mirror) rather than through ``nfl_data_py``. Two reasons:
+
+* ``nfl_data_py`` fetches schedules and weekly rosters from
+  ``habitatring.com`` over plain HTTP, which many corporate egress proxies
+  block, and
+* it pins ``pandas<2``, so it cannot be installed on Python 3.13, where no
+  pandas 1.x wheels exist.
+
+Reading the releases directly removes the dependency and the pin.
 
 Every loader caches to ``data/raw`` as parquet. Pass ``refresh=True`` to force
 a re-pull.
@@ -63,14 +68,30 @@ def _cached(name: str, seasons: Sequence[int], builder, refresh: bool = False):
 # --------------------------------------------------------------------------
 # Play-by-play
 # --------------------------------------------------------------------------
-def _build_pbp(seasons: Sequence[int]) -> pd.DataFrame:
-    import nfl_data_py as nfl
+def _read_release(group: str, name: str, season: int) -> pd.DataFrame:
+    """Read one season of an nflverse release, or an empty frame if absent."""
+    url = f"{NFLVERSE_RELEASE}/{group}/{name}_{season}.parquet"
+    try:
+        return pd.read_parquet(url)
+    except Exception as exc:
+        log.warning("%s unavailable for %s (%s)", name, season, exc)
+        return pd.DataFrame()
 
-    df = nfl.import_pbp_data(list(seasons), columns=PBP_COLUMNS, downcast=True,
-                             cache=False)
-    if GAME_TYPES:
-        df = df[df["season_type"].isin(GAME_TYPES)]
-    return df.reset_index(drop=True)
+
+def _build_pbp(seasons: Sequence[int]) -> pd.DataFrame:
+    frames = []
+    for season in seasons:
+        raw = _read_release("pbp", "play_by_play", season)
+        if raw.empty:
+            continue
+        keep = [c for c in PBP_COLUMNS if c in raw.columns]
+        part = raw[keep]
+        if GAME_TYPES and "season_type" in part.columns:
+            part = part[part["season_type"].isin(GAME_TYPES)]
+        frames.append(part)
+    if not frames:
+        return pd.DataFrame(columns=PBP_COLUMNS)
+    return pd.concat(frames, ignore_index=True)
 
 
 def load_pbp(seasons: Iterable[int] = SEASONS, refresh: bool = False) -> pd.DataFrame:
@@ -109,12 +130,16 @@ def load_weekly_rosters(seasons: Iterable[int] = SEASONS,
 # Snap counts (Pro-Football-Reference sourced; our starter cross-check)
 # --------------------------------------------------------------------------
 def _build_snap_counts(seasons: Sequence[int]) -> pd.DataFrame:
-    import nfl_data_py as nfl
-
-    df = nfl.import_snap_counts(list(seasons))
-    if GAME_TYPES:
-        df = df[df["game_type"].isin(GAME_TYPES)]
-    return df.reset_index(drop=True)
+    frames = []
+    for season in seasons:
+        part = _read_release("snap_counts", "snap_counts", season)
+        if part.empty:
+            continue
+        if GAME_TYPES and "game_type" in part.columns:
+            part = part[part["game_type"].isin(GAME_TYPES)]
+        frames.append(part)
+    return (pd.concat(frames, ignore_index=True) if frames
+            else pd.DataFrame())
 
 
 def load_snap_counts(seasons: Iterable[int] = SEASONS,
@@ -212,12 +237,16 @@ def load_depth_charts(seasons: Iterable[int] = SEASONS,
 # Injury reports (pregame availability for inference)
 # --------------------------------------------------------------------------
 def _build_injuries(seasons: Sequence[int]) -> pd.DataFrame:
-    import nfl_data_py as nfl
-
-    df = nfl.import_injuries(list(seasons))
-    if GAME_TYPES and "game_type" in df.columns:
-        df = df[df["game_type"].isin(GAME_TYPES)]
-    return df.reset_index(drop=True)
+    frames = []
+    for season in seasons:
+        part = _read_release("injuries", "injuries", season)
+        if part.empty:
+            continue
+        if GAME_TYPES and "game_type" in part.columns:
+            part = part[part["game_type"].isin(GAME_TYPES)]
+        frames.append(part)
+    return (pd.concat(frames, ignore_index=True) if frames
+            else pd.DataFrame())
 
 
 def load_injuries(seasons: Iterable[int] = SEASONS,

@@ -256,6 +256,16 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
         feats["note"], (feats["new_head_coach"].fillna(0) == 1).to_numpy(),
         "team has a new head coach")
 
+    # A projected starter with no resolvable game this season is the extreme
+    # staleness case: every form feature describes last year. It slips past the
+    # rookie check (he has career carries) and past the depth-chart checks (he
+    # is the listed RB1), so flag it explicitly once the season is underway.
+    no_season_games = ((feats["games_this_season"] == 0) & (week > 1)).to_numpy()
+    feats["note"] = _add_note(feats["note"], no_season_games,
+                              "NO resolvable game this season; every form "
+                              "feature is from last year")
+    feats.loc[no_season_games, "needs_review"] = 1
+
     # Players with no prior NFL game at all have no player features whatsoever;
     # every one of them is median-imputed, so the prediction is really just the
     # team and matchup talking. Rookies must be called out explicitly.

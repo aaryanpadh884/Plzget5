@@ -23,13 +23,13 @@ Two things fall out of this table.
 ```
                          mean  size
 carries on first drive             
-0                       0.000   918
-1                       0.247  1557
-2                       0.671  1248
-3                       0.889   804
-4                       0.952   420
-5                       0.972   215
-6                       0.987   156
+0                       0.000   930
+1                       0.244  1589
+2                       0.671  1276
+3                       0.887   814
+4                       0.954   433
+5                       0.973   219
+6                       0.987   159
 ```
 
 The threshold sits exactly where the carry distribution is densest. One carry is a 25% proposition, two carries is 67%. The average opening drive gives the starter 1.93 carries, so most team-games land on the steepest part of that curve, where a single extra handoff flips the answer.
@@ -38,10 +38,10 @@ The threshold sits exactly where the carry distribution is densest. One carry is
 
 ```
                        question  base rate    AUC  log loss
-          P(at least 1 carries)     0.8274 0.6428    0.4503
-          P(at least 2 carries)     0.5346 0.5846    0.6800
-          P(at least 3 carries)     0.2999 0.5902    0.5916
-P(5+ rushing yards) [the label]     0.5077 0.5807    0.6831
+          P(at least 1 carries)     0.8284 0.6428    0.4503
+          P(at least 2 carries)     0.5352 0.5846    0.6800
+          P(at least 3 carries)     0.2998 0.5902    0.5916
+P(5+ rushing yards) [the label]     0.5072 0.5807    0.6831
 ```
 
 This is the crux. Pregame data predicts **whether** the back touches the ball reasonably well, because that is a question about his role and teams telegraph roles. It predicts **how many times** much worse, because carry count depends on how long the drive lasts, and drive length is decided by the drive itself: a third-down conversion, a holding penalty, an interception. None of that is knowable on Saturday night.

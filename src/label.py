@@ -42,7 +42,16 @@ TEAM_FIXES = {"OAK": "LV", "SD": "LAC", "STL": "LA", "LAR": "LA", "WSH": "WAS"}
 
 
 def standardize_team(s: pd.Series) -> pd.Series:
-    return s.astype("object").replace(TEAM_FIXES)
+    """Map franchise codes onto the nflfastR convention.
+
+    Returns a consistent ``string`` dtype. pandas 3 infers ``StringDtype`` for
+    text read from parquet but ``object`` for the result of ``replace`` on an
+    object series, which made the training and inference paths produce frames
+    that held identical values under different dtypes. ``DataFrame.equals`` is
+    dtype-strict, so that difference alone broke the train/serve consistency
+    test; pinning the dtype here keeps the two paths genuinely identical.
+    """
+    return s.astype("object").replace(TEAM_FIXES).astype("string")
 
 
 _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
