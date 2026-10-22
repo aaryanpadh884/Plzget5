@@ -43,6 +43,30 @@ def _add_note(notes: pd.Series, mask: np.ndarray, text: str) -> pd.Series:
 # time. It is surfaced as a warning instead.
 BLOCKING_STATUSES = {"Out", "Doubtful"}
 
+# Weekly-roster status codes that mean a back is not available to start.
+# Measured over 2013-2026, the share of RBs carrying the ball in a week they
+# held each of these codes: INA 0.0%, RET 0.0%, PUP 0.0%, EXE 0.0%, E14 0.0%,
+# UFA 0.0%, CUT 0.5%, DEV 0.2%, SUS 1.9%, RSN 3.6%, NWT 6.3%, RES 7.4% --
+# against 60.9% for ACT. Codes left out of this set (TRD 44.1%, TRC 36.1%,
+# TRT 37.8%, RSR 37.9%) describe mid-season moves where the player does play
+# for the team the roster row belongs to, so they stay eligible.
+#
+# The set is explicit rather than an ACT-only allowlist so an unrecognized
+# future code leaves a back eligible and merely warns, instead of silently
+# emptying every depth chart.
+UNAVAILABLE_ROSTER_STATUSES = {
+    "RES", "CUT", "INA", "RET", "PUP", "SUS", "EXE", "E14", "UFA", "RSN",
+    "NWT", "DEV", "RFA",
+}
+
+# A back's status can lag reality: the week-1 2014 snapshot lists Adrian
+# Peterson as SUS even though he played that game and was suspended after it.
+# That is 1 of 54 SUS cases, so the signal is kept, but a back skipped for
+# status is always reported rather than quietly dropped.
+KNOWN_ROSTER_STATUSES = UNAVAILABLE_ROSTER_STATUSES | {
+    "ACT", "TRD", "TRC", "TRT", "RSR",
+}
+
 
 # --------------------------------------------------------------------------
 # Pregame starter projection
@@ -74,8 +98,36 @@ def questionable_players(injuries: pd.DataFrame, season: int,
     return set(inj.loc[inj["report_status"] == "Questionable", "gsis_id"].dropna())
 
 
+def roster_status(rosters: pd.DataFrame, season: int,
+                  week: int) -> pd.DataFrame:
+    """This week's roster status per RB, used to rule out unavailable backs."""
+    r = rosters[(rosters["season"] == season) & (rosters["position"] == "RB")].copy()
+    r["week"] = pd.to_numeric(r["week"], errors="coerce")
+    r = r[r["week"] == week].dropna(subset=["gsis_id"])
+    unknown = set(r["status"].dropna().unique()) - KNOWN_ROSTER_STATUSES
+    if unknown:
+        log.warning("unrecognized roster status codes, treated as available: %s",
+                    sorted(unknown))
+    return (r[["gsis_id", "status"]]
+            .drop_duplicates(subset=["gsis_id"])
+            .rename(columns={"status": "roster_status"}))
+
+
+def _resolve_override(pool: pd.DataFrame, wanted: str):
+    """Find a named back on a team's depth chart, by substring, case-insensitive."""
+    hit = pool[pool["full_name"].str.contains(wanted, case=False, na=False)]
+    if len(hit) == 1:
+        return hit.iloc[0], None
+    if hit.empty:
+        return None, f"{wanted!r} is not on this week's depth chart"
+    names = ", ".join(hit["full_name"])
+    return None, f"{wanted!r} is ambiguous (matches {names})"
+
+
 def project_starters(depth_charts: pd.DataFrame, injuries: pd.DataFrame,
-                     season: int, week: int, teams: list[str]) -> pd.DataFrame:
+                     season: int, week: int, teams: list[str],
+                     rosters: pd.DataFrame = None,
+                     overrides: dict = None) -> pd.DataFrame:
     """Project each team's starting RB from the depth chart and injury report.
 
     Promotion chain: take the highest available depth-chart RB. If the listed
@@ -86,22 +138,57 @@ def project_starters(depth_charts: pd.DataFrame, injuries: pd.DataFrame,
     out_ids = blocked_players(injuries, season, week)
     quest_ids = questionable_players(injuries, season, week)
 
+    # A depth chart can keep listing a back who is suspended, on IR, cut or
+    # traded away. Roughly 7% of listed RB1s across 2013-2026 carry a roster
+    # status that means they are not available, so the chart alone is not
+    # enough to pick a starter from.
+    status = (roster_status(rosters, season, week) if rosters is not None
+              else pd.DataFrame(columns=["gsis_id", "roster_status"]))
+    rbs = rbs.merge(status, on="gsis_id", how="left")
+    unavailable = rbs["roster_status"].isin(UNAVAILABLE_ROSTER_STATUSES)
+    status_by_id = dict(zip(rbs["gsis_id"], rbs["roster_status"]))
+    blocked_by_status = set(rbs.loc[unavailable, "gsis_id"])
+
+    overrides = {k.upper(): v for k, v in (overrides or {}).items()}
+
     rows = []
     for team in teams:
         pool = rbs[rbs["team"] == team]
+
+        # An explicit override wins over every automatic rule. The roster feed
+        # can lag reality -- a reinstated back may still read EXE for days --
+        # and when the user knows better than the data, they should be able to
+        # say so rather than work around the projection.
+        if team in overrides and not pool.empty:
+            pick, problem = _resolve_override(pool, overrides[team])
+            if pick is not None:
+                st = status_by_id.get(pick["gsis_id"])
+                note = f"MANUAL OVERRIDE: starter set to {pick['full_name']}"
+                if st in UNAVAILABLE_ROSTER_STATUSES:
+                    note += f" (roster feed still reads {st})"
+                rows.append({"team": team, "starter_id": pick["gsis_id"],
+                             "starter_name": pick["full_name"],
+                             "depth_rank": float(pick["depth"]),
+                             "needs_review": 1, "note": note})
+                continue
+            log.warning("override for %s ignored: %s", team, problem)
         if pool.empty:
             rows.append({"team": team, "starter_id": None, "starter_name": None,
                          "depth_rank": np.nan, "needs_review": 1,
                          "note": "no depth chart published for this team-week"})
             continue
 
-        available = pool[~pool["gsis_id"].isin(out_ids)]
+        available = pool[~pool["gsis_id"].isin(out_ids)
+                         & ~pool["gsis_id"].isin(blocked_by_status)]
         if available.empty:
             listed = pool.iloc[0]
+            why = (f"roster status {status_by_id.get(listed['gsis_id'])}"
+                   if listed["gsis_id"] in blocked_by_status
+                   else "Out or Doubtful")
             rows.append({"team": team, "starter_id": None,
                          "starter_name": listed["full_name"],
                          "depth_rank": float(listed["depth"]), "needs_review": 1,
-                         "note": "every listed RB is Out or Doubtful"})
+                         "note": f"no available listed RB (top choice: {why})"})
             continue
 
         pick = available.iloc[0]
@@ -109,7 +196,13 @@ def project_starters(depth_charts: pd.DataFrame, injuries: pd.DataFrame,
         note, review = "", 0
 
         if float(pick["depth"]) > top_depth:
-            note = (f"RB1 ruled out; promoted from depth {int(pick['depth'])}")
+            skipped = pool[pool["depth"] == top_depth].iloc[0]
+            reason = (f"roster status "
+                      f"{status_by_id.get(skipped['gsis_id'])}"
+                      if skipped["gsis_id"] in blocked_by_status
+                      else "ruled out")
+            note = (f"listed RB1 {skipped['full_name']} skipped ({reason}); "
+                    f"promoted from depth {int(pick['depth'])}")
             review = 1
         elif (pool["depth"] == top_depth).sum() > 1:
             note = "multiple RBs listed as RB1 (committee backfield)"
@@ -158,7 +251,7 @@ def week_targets(schedules: pd.DataFrame, season: int, week: int) -> pd.DataFram
 # Prediction
 # --------------------------------------------------------------------------
 def predict_week(season: int, week: int, model_name: str = "logistic",
-                 refresh: bool = False) -> pd.DataFrame:
+                 refresh: bool = False, overrides: dict = None) -> pd.DataFrame:
     import ingest
 
     # Live inference uses the production fit, trained on every game played,
@@ -184,7 +277,8 @@ def predict_week(season: int, week: int, model_name: str = "logistic",
 
     targets = week_targets(schedules, season, week)
     starters = project_starters(depth_charts, injuries, season, week,
-                                sorted(targets["team"].unique()))
+                                sorted(targets["team"].unique()), rosters,
+                                overrides)
     targets = targets.merge(starters, on="team", how="left")
 
     resolved = targets[targets["starter_id"].notna()].copy()
@@ -321,9 +415,22 @@ def main() -> None:
     ap.add_argument("--csv", help="also write predictions to this path")
     ap.add_argument("--refresh", action="store_true",
                     help="re-pull the data caches before predicting")
+    ap.add_argument("--starter", action="append", metavar="TEAM=NAME",
+                    default=[],
+                    help="force a team's starting RB, e.g. --starter GB=Jacobs. "
+                         "Use when you know the roster feed is stale. "
+                         "Repeatable.")
     args = ap.parse_args()
 
-    preds = predict_week(args.season, args.week, args.model, args.refresh)
+    overrides = {}
+    for item in args.starter:
+        if "=" not in item:
+            ap.error(f"--starter expects TEAM=NAME, got {item!r}")
+        team, name = item.split("=", 1)
+        overrides[team.strip()] = name.strip()
+
+    preds = predict_week(args.season, args.week, args.model, args.refresh,
+                         overrides)
 
     shown = preds.copy()
     shown["p_5plus"] = shown["p_5plus"].round(4)
